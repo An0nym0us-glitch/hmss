@@ -145,6 +145,54 @@ std::string deviceCategory(const DeviceInfo& d)
     return "Playback device";
 }
 
+DeviceBus classifyDeviceBus(const std::string& interfacePath, const std::string& friendlyName,
+                            const std::string& adapterName, FormFactor formFactor, bool* handsFree)
+{
+    const std::string names = friendlyName + " " + adapterName;
+    bool hf = containsNoCase(interfacePath, "bthhfenum") || containsNoCase(names, "hands-free") ||
+              containsNoCase(names, "handsfree");
+    DeviceBus bus = DeviceBus::Unknown;
+    if (containsNoCase(interfacePath, "bthhfenum") || containsNoCase(interfacePath, "bthenum") ||
+        containsNoCase(interfacePath, "bthleenum") || containsNoCase(interfacePath, "bthle") ||
+        containsNoCase(interfacePath, "{0000110b-") || containsNoCase(interfacePath, "{0000111e-"))
+        bus = DeviceBus::Bluetooth;
+    else if (containsNoCase(interfacePath, "usb#") || containsNoCase(interfacePath, "\\usb") ||
+             containsNoCase(interfacePath, "usbaudio"))
+        bus = DeviceBus::USB;
+    else if (containsNoCase(interfacePath, "hdaudio#") || containsNoCase(interfacePath, "intelaudio#") ||
+             containsNoCase(interfacePath, "intcaudiobus") || containsNoCase(interfacePath, "acp#") ||
+             containsNoCase(interfacePath, "amdaudio") || containsNoCase(interfacePath, "sst") ||
+             containsNoCase(interfacePath, "pci#"))
+        bus = formFactor == FormFactor::DigitalAudioDisplayDevice ? DeviceBus::Display : DeviceBus::Internal;
+    else if (containsNoCase(interfacePath, "root#"))
+        bus = DeviceBus::Virtual;
+
+    if (bus == DeviceBus::Unknown) {
+        // Name based fallbacks (endpoint not active, or unusual driver stack).
+        if (hf || containsNoCase(names, "bluetooth") || containsNoCase(names, "a2dp") ||
+            containsNoCase(names, "le audio"))
+            bus = DeviceBus::Bluetooth;
+        else if (formFactor == FormFactor::DigitalAudioDisplayDevice || containsNoCase(names, "hdmi") ||
+                 containsNoCase(names, "displayport") || containsNoCase(names, "display audio") ||
+                 containsNoCase(names, "nvidia high definition"))
+            bus = DeviceBus::Display;
+        else if (containsNoCase(names, "usb"))
+            bus = DeviceBus::USB;
+        else if (containsNoCase(names, "virtual") || containsNoCase(names, "cable") ||
+                 containsNoCase(names, "voicemeeter") || containsNoCase(names, "steam streaming"))
+            bus = DeviceBus::Virtual;
+        else if (containsNoCase(names, "realtek") || containsNoCase(names, "smart sound") ||
+                 containsNoCase(names, "high definition audio") || containsNoCase(names, "conexant") ||
+                 containsNoCase(names, "microphone array") || containsNoCase(names, "internal"))
+            bus = DeviceBus::Internal;
+    }
+    if (bus != DeviceBus::Bluetooth)
+        hf = false;
+    if (handsFree)
+        *handsFree = hf;
+    return bus;
+}
+
 std::string shortIdHash(const std::string& id)
 {
     // FNV-1a 32 bit, rendered as 4 hex digits: stable across runs.

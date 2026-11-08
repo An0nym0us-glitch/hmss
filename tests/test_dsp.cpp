@@ -303,3 +303,28 @@ TEST(routing_matrix_and_feedback_risk)
     CHECK(AudioRoutingMatrix::feedbackRisk(laptopMic, laptopSpk) == AudioRoutingMatrix::FeedbackRisk::SameComputer);
     CHECK(AudioRoutingMatrix::feedbackRisk(headsetMic, usbSpk) == AudioRoutingMatrix::FeedbackRisk::None);
 }
+
+TEST(device_bus_classification)
+{
+    bool hf = false;
+    CHECK(classifyDeviceBus("{2}.\\\\?\\bthhfenum#bthhfpaudio#8&2c5d&0&97#{6994ad04-93ef-11d0-a3cc-00a0c9223196}",
+                            "Headset Microphone (Earbuds)", "Earbuds", FormFactor::Headset, &hf) == DeviceBus::Bluetooth);
+    CHECK(hf);
+    CHECK(classifyDeviceBus("{2}.\\\\?\\bthenum#{0000110b-0000-1000-8000-00805f9b34fb}_vid&0001",
+                            "Headphones (Earbuds Stereo)", "Earbuds Stereo", FormFactor::Headphones, &hf) == DeviceBus::Bluetooth);
+    CHECK(!hf);
+    CHECK(classifyDeviceBus("{2}.\\\\?\\usb#vid_046d&pid_0825&mi_02#6&1b2c#0000#{6994ad04}",
+                            "Microphone (HD Webcam C270)", "HD Webcam C270", FormFactor::Microphone, &hf) == DeviceBus::USB);
+    CHECK(classifyDeviceBus("{2}.\\\\?\\hdaudio#func_01&ven_10de&dev_009f#5&2f&0&0001#{6994ad04}",
+                            "NVIDIA High Definition Audio", "", FormFactor::DigitalAudioDisplayDevice, &hf) == DeviceBus::Display);
+    CHECK(classifyDeviceBus("{2}.\\\\?\\intelaudio#func_01&ven_10ec&dev_0257#5&1a#{6994ad04}",
+                            "Speakers (Realtek(R) Audio)", "Realtek(R) Audio", FormFactor::Speakers, &hf) == DeviceBus::Internal);
+    CHECK(classifyDeviceBus("{2}.\\\\?\\root#media#0000#{6994ad04}", "CABLE Output (VB-Audio Virtual Cable)", "",
+                            FormFactor::Microphone, &hf) == DeviceBus::Virtual);
+    // No topology information (endpoint not active): name fallbacks.
+    CHECK(classifyDeviceBus("", "Headset (Earbuds Hands-Free AG Audio)", "", FormFactor::Headset, &hf) == DeviceBus::Bluetooth);
+    CHECK(hf);
+    CHECK(classifyDeviceBus("", "Microphone Array (Intel Smart Sound Technology)", "", FormFactor::Microphone, &hf) ==
+          DeviceBus::Internal);
+    CHECK(classifyDeviceBus("", "Something", "", FormFactor::Speakers, &hf) == DeviceBus::Unknown);
+}

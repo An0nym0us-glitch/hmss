@@ -96,6 +96,13 @@ std::string deviceCategory(const DeviceInfo& d);
 // short stable suffix derived from the endpoint ID.
 void disambiguateDisplayNames(std::vector<DeviceInfo>& devices);
 
+// Determines the physical connection of an endpoint from the device-interface path of
+// the kernel-streaming filter it belongs to (e.g. "\\?\usb#vid_046d...",
+// "\\?\bthhfenum#...", "\\?\hdaudio#func_01&ven_10de...") with name-based fallbacks.
+// Sets *handsFree for Bluetooth HFP/HSP endpoints.
+DeviceBus classifyDeviceBus(const std::string& interfacePath, const std::string& friendlyName,
+                            const std::string& adapterName, FormFactor formFactor, bool* handsFree);
+
 // Stable short hash of an endpoint ID (used for disambiguation suffixes).
 std::string shortIdHash(const std::string& id);
 

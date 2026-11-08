@@ -17,6 +17,11 @@ option(AUDIOBRIDGE_BUILD_TESTS "Build the automated test suite" ON)
 # Never enabled for Windows builds - the Windows application always uses WASAPI.
 option(AUDIOBRIDGE_DEV_SIMULATION "Non-Windows development build with simulated devices" OFF)
 
+if(MINGW)
+    # Self-contained executables: no libstdc++/libgcc/winpthread DLLs to ship.
+    add_link_options(-static -static-libgcc -static-libstdc++)
+endif()
+
 if(MSVC)
     add_compile_options(/W4 /permissive- /utf-8 /wd4100)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
@@ -45,9 +50,34 @@ find_package(Threads REQUIRED)
 target_link_libraries(audiobridge_core PUBLIC Threads::Threads)
 
 # ---------------------------------------------------------------------------------
+# Windows backend: WASAPI + Core Audio device enumeration
+if(WIN32)
+    add_library(audiobridge_wasapi STATIC
+        src/backend/wasapi/WasapiCommon.cpp
+        src/backend/wasapi/WasapiStream.cpp
+        src/backend/wasapi/WasapiBackend.cpp
+    )
+    target_link_libraries(audiobridge_wasapi PUBLIC audiobridge_core ole32 oleaut32 avrt uuid)
+    set(AUDIOBRIDGE_PLATFORM_BACKEND audiobridge_wasapi)
+endif()
+
+# ---------------------------------------------------------------------------------
 # Simulated backend: tests and non-Windows development builds only
 add_library(audiobridge_sim STATIC src/backend/sim/SimulatedBackend.cpp)
 target_link_libraries(audiobridge_sim PUBLIC audiobridge_core)
+
+if(NOT WIN32)
+    # On non-Windows hosts the tools run against simulated devices (development only).
+    set(AUDIOBRIDGE_PLATFORM_BACKEND audiobridge_sim)
+endif()
+
+# ---------------------------------------------------------------------------------
+# Command line tool
+if(AUDIOBRIDGE_BUILD_CLI)
+    add_executable(AudioBridgeCLI src/cli/main.cpp)
+    target_link_libraries(AudioBridgeCLI PRIVATE ${AUDIOBRIDGE_PLATFORM_BACKEND})
+    install(TARGETS AudioBridgeCLI RUNTIME DESTINATION .)
+endif()
 
 # ---------------------------------------------------------------------------------
 # Tests
