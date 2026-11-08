@@ -1,0 +1,117 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows x64 (MSVC + Qt 5.15) - installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 5.15.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "5.15.2"
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          cache: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test (simulated endpoints, incl. 30 min virtual run)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: List audio endpoints on the runner (hosted runners usually have none)
+        continue-on-error: true
+        run: build\AudioBridgeCLI.exe --list
+
+      - name: Deploy
+        shell: pwsh
+        run: |
+          $out = "deploy\AudioBridge"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item build\AudioBridge.exe, build\AudioBridgeCLI.exe $out
+          windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler --no-compiler-runtime "$out\AudioBridge.exe"
+          # App-local Visual C++ runtime (no separate redistributable install needed).
+          $crt = Get-ChildItem -Path "$env:VCToolsRedistDir\x64" -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
+          Copy-Item "$($crt.FullName)\msvcp140.dll", "$($crt.FullName)\vcruntime140.dll", "$($crt.FullName)\vcruntime140_1.dll" $out
+          Copy-Item docs\THIRD_PARTY_NOTICES.md "$out\THIRD_PARTY_NOTICES.txt"
+          Get-ChildItem -Recurse $out | Select-Object FullName, Length
+
+      - name: Smoke test deployed executable
+        shell: pwsh
+        run: deploy\AudioBridge\AudioBridgeCLI.exe --list
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(AudioBridge VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          & $iscc "/DSourceDir=..\deploy\AudioBridge" "/DAppVersion=$version" installer\AudioBridge.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item installer\Output\AudioBridge-Setup-x64.exe
+
+      - name: Silent install / uninstall test
+        shell: pwsh
+        run: |
+          $p = Start-Process installer\Output\AudioBridge-Setup-x64.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
+          $exe = "$env:ProgramFiles\AudioBridge\AudioBridge.exe"
+          if (-not (Test-Path $exe)) { throw "AudioBridge.exe not installed" }
+          & "$env:ProgramFiles\AudioBridge\AudioBridgeCLI.exe" --list
+          $u = Start-Process "$env:ProgramFiles\AudioBridge\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path $exe) { throw "uninstall left files behind" }
+          "install + uninstall OK"
+
+      - name: Portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path deploy\AudioBridge\* -DestinationPath AudioBridge-portable-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioBridge-Setup-x64
+          path: installer/Output/AudioBridge-Setup-x64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioBridge-portable-x64
+          path: AudioBridge-portable-x64.zip
+
+  linux-tests:
+    name: Core tests (Linux, sanitizers)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test (release)
+        run: |
+          cmake -S . -B build -DAUDIOBRIDGE_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+      - name: ThreadSanitizer (threaded stress test)
+        run: |
+          cmake -S . -B build-tsan -DAUDIOBRIDGE_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS=-fsanitize=thread
+          cmake --build build-tsan -j --target audiobridge_tests
+          build-tsan/audiobridge_tests threaded
+      - name: AddressSanitizer + UBSan (all but the 30 min run)
+        run: |
+          cmake -S . -B build-asan -DAUDIOBRIDGE_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build build-asan -j --target audiobridge_tests
+          for t in resampler sample_format channel_mapping broadcast noise_ high_pass limiter device_ routing scenario0 scenario10 scenario11 scenario12 engine_ threaded; do build-asan/audiobridge_tests $t; done

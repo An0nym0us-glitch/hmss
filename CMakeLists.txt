@@ -86,6 +86,15 @@ if(AUDIOBRIDGE_BUILD_GUI)
         message(STATUS "GUI skipped: on non-Windows hosts it requires -DAUDIOBRIDGE_DEV_SIMULATION=ON")
     else()
         find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets)
+        # Cross-compilation: the target Qt's moc/uic/rcc are Windows executables.
+        # Point AUDIOBRIDGE_QT_HOST_TOOLS at a host Qt 5.15 bin directory instead
+        # (all Qt 5.15.x generators emit the same output revision).
+        set(AUDIOBRIDGE_QT_HOST_TOOLS "" CACHE PATH "Directory with host moc/uic/rcc (cross builds only)")
+        if(AUDIOBRIDGE_QT_HOST_TOOLS)
+            foreach(tool moc uic rcc)
+                set_target_properties(Qt5::${tool} PROPERTIES IMPORTED_LOCATION ${AUDIOBRIDGE_QT_HOST_TOOLS}/${tool})
+            endforeach()
+        endif()
         set(CMAKE_AUTOMOC ON)
         set(CMAKE_AUTOUIC ON)
         set(CMAKE_AUTORCC ON)

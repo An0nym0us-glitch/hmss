@@ -1,6 +1,9 @@
 build*/
+/deploy/
+/installer/Output/
 /out/
 *.user
 .vs/
 .vscode/
 CMakeUserPresets.json
+*.zip

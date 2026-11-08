@@ -87,7 +87,6 @@ private:
     std::vector<std::complex<float>> specL_, specR_;
     std::vector<float> noise_, prevGain_, prevSnr_, gain_, smoothPow_;
     int fill_ = 0;      // samples collected towards the next hop
-    int outPos_ = 0;    // read position in the current output hop
     long framesSeen_ = 0;
 };
 
