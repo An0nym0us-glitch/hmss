@@ -27,7 +27,7 @@ void AudioOutputMixer::prepare(const StreamFormat& deviceFormat)
     outGain_.prepare(format_.sampleRate, 20.0);
     outGain_.setImmediate(0.0f);
     limiter_.prepare(format_.sampleRate);
-    maxBlockSeen_ = 0;
+    maxBlockSeen_ = 0.0;
 
     const std::size_t maxIn = static_cast<std::size_t>(std::ceil(kChunk * nominalRatio_ * 1.02)) + 128;
     mix_.assign(kChunk * kEngineChannels, 0.0f);
@@ -59,7 +59,7 @@ double AudioOutputMixer::targetFillFrames(const RouteReader& r, const InputSlot&
     // Never target less than what the two device clocks can physically deliver:
     // one capture burst + one render block + a small safety margin.
     const double floor = static_cast<double>(in.maxBurstFrames.load(std::memory_order_relaxed)) +
-                         static_cast<double>(maxBlockSeen_) * nominalRatio_ + 0.002 * engineRate_;
+                         maxBlockSeen_ * nominalRatio_ + 0.002 * engineRate_;
     const double delay = static_cast<double>(graph_->outputs[slot_].params.extraDelayMs.load(std::memory_order_relaxed)) *
                          engineRate_ / 1000.0;
     double t = std::max(user, floor) + r.adaptiveMarginFrames + std::max(0.0, delay);
@@ -162,8 +162,9 @@ void AudioOutputMixer::renderChunk(std::uint8_t* dst, std::size_t frames)
 {
     OutputSlot& out = graph_->outputs[slot_];
     const OutputParams& p = out.params;
-    if (frames > maxBlockSeen_)
-        maxBlockSeen_ = frames;
+    // Decaying peak (~30 s to settle back after a one-off oversized request, e.g. after a
+    // device stall), so a single hiccup does not raise the latency floor forever.
+    maxBlockSeen_ = std::max(static_cast<double>(frames), maxBlockSeen_ - static_cast<double>(frames) * 0.001);
 
     std::fill(mix_.begin(), mix_.begin() + static_cast<std::ptrdiff_t>(frames * kEngineChannels), 0.0f);
     float latency = 0.0f;

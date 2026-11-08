@@ -25,6 +25,7 @@ void AudioInputProcessor::prepare(const StreamFormat& deviceFormat)
     gain_.setImmediate(dbToLinear(p.gainDb.load()));
     fader_.setImmediate(0.0f); // fade in on start: no click
     hpfOn_ = nsOn_ = gateOn_ = false;
+    burstPeak_ = 0.0;
 
     devBuf_.assign(kChunk * static_cast<std::size_t>(std::max(1, format_.channels)), 0.0f);
     stereoBuf_.assign(kChunk * kEngineChannels, 0.0f);
@@ -110,8 +111,8 @@ void AudioInputProcessor::processChunk(const std::uint8_t* data, std::size_t fra
     // 4) Publish to all routes.
     slot.ring.write(work, n);
     slot.framesCaptured.fetch_add(n, std::memory_order_relaxed);
-    if (n > slot.maxBurstFrames.load(std::memory_order_relaxed))
-        slot.maxBurstFrames.store(static_cast<std::uint32_t>(n), std::memory_order_relaxed);
+    burstPeak_ = std::max(static_cast<double>(n), burstPeak_ - static_cast<double>(n) * 0.001);
+    slot.maxBurstFrames.store(static_cast<std::uint32_t>(burstPeak_), std::memory_order_relaxed);
 }
 
 } // namespace ab

@@ -47,6 +47,7 @@ private:
     SmoothedValue gain_;
     SmoothedValue fader_;
     bool hpfOn_ = false, nsOn_ = false, gateOn_ = false;
+    double burstPeak_ = 0.0; // decaying peak of delivered block size (engine frames)
 
     std::vector<float> devBuf_;
     std::vector<float> stereoBuf_;

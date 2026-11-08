@@ -60,7 +60,7 @@ private:
     RouteReader readers_[kMaxInputs];
     SmoothedValue outGain_;
     Limiter limiter_;
-    std::size_t maxBlockSeen_ = 0;
+    double maxBlockSeen_ = 0.0; // decaying peak of the device block size
 
     std::vector<float> mix_;
     std::vector<float> routeIn_;
