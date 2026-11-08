@@ -16,7 +16,7 @@ namespace ab {
 class DriftController {
 public:
     // kp [1/s], ki [1/s^2] act on the fill error expressed in seconds.
-    void configure(double kp = 0.11, double ki = 0.0064, double smoothingSeconds = 0.5, double maxCorrection = 0.01)
+    void configure(double kp = 0.06, double ki = 0.002, double smoothingSeconds = 0.5, double maxCorrection = 0.01)
     {
         kp_ = kp;
         ki_ = ki;
@@ -65,7 +65,7 @@ public:
     double smoothedErrorSeconds() const { return avg_; }
 
 private:
-    double kp_ = 0.11, ki_ = 0.0064, tau_ = 0.5, maxCorr_ = 0.01;
+    double kp_ = 0.06, ki_ = 0.002, tau_ = 0.5, maxCorr_ = 0.01;
     double avg_ = 0.0, integ_ = 0.0, lastCorrection_ = 0.0;
     bool primed_ = false;
 };

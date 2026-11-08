@@ -119,6 +119,10 @@ public:
     // schedule refreshDevices() / housekeeping() on the control thread in response.
     void setDeviceChangeHook(std::function<void()> hook) { hook_ = std::move(hook); }
 
+    // Monotonic time in seconds used for retry back-off. Defaults to steady_clock;
+    // tests inject the simulator's virtual clock.
+    void setTimeSource(std::function<double()> now) { now_ = std::move(now); }
+
     void refreshDevices();
     // Periodic maintenance (~4 Hz): stream health, reconnection, retries.
     void housekeeping();
@@ -161,8 +165,6 @@ public:
     int outputSlot(const std::string& id) const;
 
 private:
-    using Clock = std::chrono::steady_clock;
-
     struct InputRuntime {
         InputConfig cfg;
         DeviceInfo info;
@@ -173,7 +175,7 @@ private:
         RunState state = RunState::Off;
         std::string message;
         int failures = 0;
-        Clock::time_point nextRetry{};
+        double nextRetry = 0.0;
         std::string echoReference; // render endpoint used as AEC reference when opened
     };
     struct OutputRuntime {
@@ -186,7 +188,7 @@ private:
         RunState state = RunState::Off;
         std::string message;
         int failures = 0;
-        Clock::time_point nextRetry{};
+        double nextRetry = 0.0;
     };
 
     void onDeviceListChanged() override; // IDeviceListener (any thread)
@@ -221,6 +223,7 @@ private:
     bool initialized_ = false;
     std::atomic<bool> devicesDirty_{false};
     std::function<void()> hook_;
+    std::function<double()> now_;
     std::uint64_t revision_ = 1;
 };
 

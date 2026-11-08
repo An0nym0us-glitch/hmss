@@ -17,6 +17,9 @@ const char* toString(RunState s)
 
 AudioEngine::AudioEngine(std::unique_ptr<IAudioBackend> backend) : backend_(std::move(backend))
 {
+    now_ = [] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
     applyGlobalParams();
 }
 
@@ -122,8 +125,8 @@ void AudioEngine::startMonitoring()
         return;
     monitoring_ = true;
     graph_.paused.store(false);
-    for (auto& kv : inputs_) { kv.second.failures = 0; kv.second.nextRetry = {}; }
-    for (auto& kv : outputs_) { kv.second.failures = 0; kv.second.nextRetry = {}; }
+    for (auto& kv : inputs_) { kv.second.failures = 0; kv.second.nextRetry = 0.0; }
+    for (auto& kv : outputs_) { kv.second.failures = 0; kv.second.nextRetry = 0.0; }
     // Clear any latched feedback trips from a previous session.
     for (auto& o : graph_.outputs)
         o.feedbackTripped.store(false);
@@ -184,8 +187,8 @@ void AudioEngine::setSettings(const EngineSettings& s)
         graph_.engineRate.store(settings_.sampleRate);
         applyGlobalParams();
         if (wasMonitoring) {
-            for (auto& kv : inputs_) kv.second.nextRetry = {};
-            for (auto& kv : outputs_) kv.second.nextRetry = {};
+            for (auto& kv : inputs_) kv.second.nextRetry = 0.0;
+            for (auto& kv : outputs_) kv.second.nextRetry = 0.0;
         }
         ensureStreams();
     } else {
@@ -392,14 +395,14 @@ bool AudioEngine::setInputConfig(const InputConfig& cfgIn, std::string* error)
             ok = false;
         } else {
             rt.failures = 0;
-            rt.nextRetry = {};
+            rt.nextRetry = 0.0;
         }
     } else if (!cfg.enabled && wasEnabled) {
         releaseInputSlot(rt);
     }
     if (reopen) {
         closeInput(rt);
-        rt.nextRetry = {};
+        rt.nextRetry = 0.0;
     }
     applyInputParams(rt);
     applySolo();
@@ -431,7 +434,7 @@ bool AudioEngine::setOutputConfig(const OutputConfig& cfgIn, std::string* error)
             ok = false;
         } else {
             rt.failures = 0;
-            rt.nextRetry = {};
+            rt.nextRetry = 0.0;
         }
     } else if (!cfg.enabled && wasEnabled) {
         releaseOutputSlot(rt);
@@ -473,7 +476,7 @@ void AudioEngine::setRoute(const std::string& inputId, const std::string& output
         if (it != inputs_.end() && it->second.stream && it->second.cfg.voiceProcessing &&
             echoReferenceFor(it->second) != it->second.echoReference) {
             closeInput(it->second);
-            it->second.nextRetry = {};
+            it->second.nextRetry = 0.0;
         }
         ensureStreams();
         bump();
@@ -608,14 +611,14 @@ void AudioEngine::ensureInput(InputRuntime& rt)
             if (st == IAudioStream::Status::DeviceLost) {
                 rt.state = RunState::WaitingForDevice;
                 rt.message = "Device disconnected - waiting for it to reconnect";
-                rt.nextRetry = Clock::now() + std::chrono::seconds(1);
+                rt.nextRetry = now_() + 1.0;
             } else if (st == IAudioStream::Status::FormatChanged) {
                 rt.message = "Device format changed - reopening";
-                rt.nextRetry = {};
+                rt.nextRetry = 0.0;
             } else {
                 rt.state = RunState::Error;
                 rt.message = err.empty() ? "Stream stopped unexpectedly" : err;
-                rt.nextRetry = Clock::now() + std::chrono::seconds(backoffSeconds(rt.failures++));
+                rt.nextRetry = now_() + backoffSeconds(rt.failures++);
             }
             bump();
         } else if (!want) {
@@ -624,7 +627,7 @@ void AudioEngine::ensureInput(InputRuntime& rt)
         }
     }
 
-    if (!rt.stream && want && Clock::now() >= rt.nextRetry) {
+    if (!rt.stream && want && now_() >= rt.nextRetry) {
         rt.proc.reset(new AudioInputProcessor());
         rt.proc->bind(&graph_, rt.slot);
         applyInputParams(rt);
@@ -646,7 +649,7 @@ void AudioEngine::ensureInput(InputRuntime& rt)
             rt.proc.reset();
             rt.state = RunState::Error;
             rt.message = err.empty() ? "Could not open the device" : err;
-            rt.nextRetry = Clock::now() + std::chrono::seconds(backoffSeconds(rt.failures++));
+            rt.nextRetry = now_() + backoffSeconds(rt.failures++);
         }
         bump();
     }
@@ -685,14 +688,14 @@ void AudioEngine::ensureOutput(OutputRuntime& rt)
             if (st == IAudioStream::Status::DeviceLost) {
                 rt.state = RunState::WaitingForDevice;
                 rt.message = "Device disconnected - waiting for it to reconnect";
-                rt.nextRetry = Clock::now() + std::chrono::seconds(1);
+                rt.nextRetry = now_() + 1.0;
             } else if (st == IAudioStream::Status::FormatChanged) {
                 rt.message = "Device format changed - reopening";
-                rt.nextRetry = {};
+                rt.nextRetry = 0.0;
             } else {
                 rt.state = RunState::Error;
                 rt.message = err.empty() ? "Stream stopped unexpectedly" : err;
-                rt.nextRetry = Clock::now() + std::chrono::seconds(backoffSeconds(rt.failures++));
+                rt.nextRetry = now_() + backoffSeconds(rt.failures++);
             }
             bump();
         } else if (!want) {
@@ -703,7 +706,7 @@ void AudioEngine::ensureOutput(OutputRuntime& rt)
         }
     }
 
-    if (!rt.stream && want && Clock::now() >= rt.nextRetry) {
+    if (!rt.stream && want && now_() >= rt.nextRetry) {
         rt.mixer.reset(new AudioOutputMixer());
         rt.mixer->bind(&graph_, rt.slot);
         applyOutputParams(rt);
@@ -719,7 +722,7 @@ void AudioEngine::ensureOutput(OutputRuntime& rt)
             rt.mixer.reset();
             rt.state = RunState::Error;
             rt.message = err.empty() ? "Could not open the device" : err;
-            rt.nextRetry = Clock::now() + std::chrono::seconds(backoffSeconds(rt.failures++));
+            rt.nextRetry = now_() + backoffSeconds(rt.failures++);
         }
         bump();
     }
