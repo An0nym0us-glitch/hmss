@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>AudioBridge.png</file>
+        <file>AudioBridge-512.png</file>
+    </qresource>
+</RCC>

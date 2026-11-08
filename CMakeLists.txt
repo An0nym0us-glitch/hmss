@@ -80,6 +80,53 @@ if(AUDIOBRIDGE_BUILD_CLI)
 endif()
 
 # ---------------------------------------------------------------------------------
+# Qt desktop application
+if(AUDIOBRIDGE_BUILD_GUI)
+    if(NOT WIN32 AND NOT AUDIOBRIDGE_DEV_SIMULATION)
+        message(STATUS "GUI skipped: on non-Windows hosts it requires -DAUDIOBRIDGE_DEV_SIMULATION=ON")
+    else()
+        find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets)
+        set(CMAKE_AUTOMOC ON)
+        set(CMAKE_AUTOUIC ON)
+        set(CMAKE_AUTORCC ON)
+        set(APP_SOURCES
+            src/app/main.cpp
+            src/app/Theme.cpp
+            src/app/AppSettings.cpp
+            src/app/EngineController.cpp
+            src/app/MainWindow.cpp
+            src/app/MeterHub.h
+            src/app/widgets/LevelMeter.cpp
+            src/app/widgets/ToggleSwitch.cpp
+            src/app/widgets/RoutingMatrixWidget.cpp
+            src/app/widgets/RoutingDiagramWidget.cpp
+            src/app/pages/PageCommon.cpp
+            src/app/pages/DashboardPage.cpp
+            src/app/pages/InputsPage.cpp
+            src/app/pages/OutputsPage.cpp
+            src/app/pages/RoutingPage.cpp
+            src/app/pages/MixerPage.cpp
+            src/app/pages/SettingsPage.cpp
+            src/app/pages/SettingsPage.ui
+            src/app/resources/resources.qrc
+        )
+        if(WIN32)
+            configure_file(src/app/resources/AudioBridge.rc.in ${CMAKE_CURRENT_BINARY_DIR}/AudioBridge.rc @ONLY)
+            list(APPEND APP_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/AudioBridge.rc)
+        endif()
+        add_executable(AudioBridge WIN32 ${APP_SOURCES})
+        set_target_properties(AudioBridge PROPERTIES AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/src/app/pages)
+        target_include_directories(AudioBridge PRIVATE src/app)
+        target_compile_definitions(AudioBridge PRIVATE AUDIOBRIDGE_VERSION="${PROJECT_VERSION}")
+        if(NOT WIN32)
+            target_compile_definitions(AudioBridge PRIVATE AUDIOBRIDGE_DEV_SIMULATION)
+        endif()
+        target_link_libraries(AudioBridge PRIVATE ${AUDIOBRIDGE_PLATFORM_BACKEND} Qt5::Widgets)
+        install(TARGETS AudioBridge RUNTIME DESTINATION .)
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------------
 # Tests
 if(AUDIOBRIDGE_BUILD_TESTS)
     enable_testing()

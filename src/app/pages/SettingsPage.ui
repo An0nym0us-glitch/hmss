@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingsPage</class>
+ <widget class="QWidget" name="SettingsPage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>860</width><height>900</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="spacing"><number>14</number></property>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>6</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item>
+    <widget class="QGroupBox" name="engineGroup">
+     <property name="title"><string>Audio engine</string></property>
+     <layout class="QFormLayout" name="engineForm">
+      <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+      <property name="horizontalSpacing"><number>24</number></property>
+      <property name="verticalSpacing"><number>12</number></property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="sampleRateLabel"><property name="text"><string>Processing sample rate</string></property></widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="sampleRateCombo">
+        <property name="toolTip"><string>Internal mixing rate. Every device keeps its own Windows format; AudioBridge converts with a high-quality band-limited resampler.</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="bufferLabel"><property name="text"><string>Buffer size</string></property></widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="bufferCombo">
+        <property name="toolTip"><string>Smaller = lower latency, larger = more robust. Bluetooth devices deliver audio in irregular bursts; AudioBridge automatically adds a safety margin when a device needs it.</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QCheckBox" name="lowLatencyCheck">
+        <property name="text"><string>Low-latency mode (smallest Windows audio engine period, if the driver supports it)</string></property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLabel" name="engineNote">
+        <property name="text"><string>Changing these settings briefly restarts the open audio streams.</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="safetyGroup">
+     <property name="title"><string>Safety</string></property>
+     <layout class="QVBoxLayout" name="safetyLayout">
+      <property name="spacing"><number>10</number></property>
+      <item>
+       <widget class="QCheckBox" name="limiterCheck">
+        <property name="text"><string>Clipping protection (peak limiter at -1 dBFS on every output)</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="feedbackCheck">
+        <property name="text"><string>Feedback protection (automatically mute an output on sustained howling)</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="devicesGroup">
+     <property name="title"><string>Devices</string></property>
+     <layout class="QVBoxLayout" name="devicesLayout">
+      <property name="spacing"><number>10</number></property>
+      <item>
+       <widget class="QCheckBox" name="showDisconnectedCheck">
+        <property name="text"><string>Show remembered devices that are currently disconnected</string></property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="refreshRow">
+        <item>
+         <widget class="QPushButton" name="refreshButton"><property name="text"><string>Refresh device list now</string></property></widget>
+        </item>
+        <item>
+         <spacer name="refreshSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="devicesNote">
+        <property name="text"><string>Device changes are detected automatically. When a device disconnects, AudioBridge keeps its settings and routes and reconnects only the same device when it returns - it never switches your audio to another device on its own.</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="appGroup">
+     <property name="title"><string>Application</string></property>
+     <layout class="QVBoxLayout" name="appLayout">
+      <property name="spacing"><number>10</number></property>
+      <item><widget class="QCheckBox" name="startMonitoringCheck"><property name="text"><string>Start monitoring automatically when AudioBridge opens</string></property></widget></item>
+      <item><widget class="QCheckBox" name="launchAtStartupCheck"><property name="text"><string>Launch AudioBridge when I sign in to Windows</string></property></widget></item>
+      <item><widget class="QCheckBox" name="startMinimizedCheck"><property name="text"><string>Start minimized to the notification area</string></property></widget></item>
+      <item><widget class="QCheckBox" name="minimizeToTrayCheck"><property name="text"><string>Closing the window keeps AudioBridge running in the notification area</string></property></widget></item>
+      <item>
+       <layout class="QHBoxLayout" name="resetRow">
+        <item><widget class="QPushButton" name="resetButton"><property name="text"><string>Reset all settings…</string></property></widget></item>
+        <item><spacer name="resetSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="aboutGroup">
+     <property name="title"><string>About</string></property>
+     <layout class="QVBoxLayout" name="aboutLayout">
+      <item>
+       <widget class="QLabel" name="aboutLabel">
+        <property name="wordWrap"><bool>true</bool></property>
+        <property name="textFormat"><enum>Qt::RichText</enum></property>
+        <property name="openExternalLinks"><bool>false</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="bottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property></spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
