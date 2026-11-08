@@ -767,3 +767,44 @@ TEST(threaded_stress_routing_changes)
     eng.stopMonitoring();
     CHECK(sim->openStreamCount() == 0);
 }
+
+// "Test" button: an identification chime on exactly one output, even with no routes
+// and with the output fader down.
+TEST(engine_test_tone_identifies_output)
+{
+    Rig r;
+    r.enableOut(kAux);
+    r.enableOut(kUsbSpk);
+    CHECK(!r.eng->playTestTone(kAux)); // not streaming yet
+    r.eng->startMonitoring();
+    r.run(0.5);
+    r.editOut(kAux, [](OutputConfig& c) { c.volume = 0.0f; });
+    r.sim->setRecording(kAux, true);
+    r.sim->setRecording(kUsbSpk, true);
+    CHECK(r.eng->playTestTone(kAux));
+    r.run(1.0);
+    auto a = r.sim->takeRecording(kAux), u = r.sim->takeRecording(kUsbSpk);
+    CHECK_MSG(peak(a) > 0.05, "test chime missing on the selected output, peak " << peak(a));
+    CHECK_MSG(peak(u) < 1e-6, "test chime leaked to another output");
+    CHECK_MSG(toneAmplitude(a, 880.0, 48000, 0, 48000 / 4) > 0.02, "first note (880 Hz) not found");
+}
+
+// "Bypass Windows audio effects" reaches the stream and re-opens a running device.
+TEST(engine_bypass_effects_reopens_stream)
+{
+    Rig r;
+    r.enableIn(kUsbMic);
+    r.enableOut(kAux);
+    r.route(kUsbMic, kAux);
+    r.eng->startMonitoring();
+    r.run(1.0);
+    CHECK(!r.sim->lastOptions(kAux).rawMode);
+    r.editOut(kAux, [](OutputConfig& c) { c.bypassEffects = true; });
+    r.editIn(kUsbMic, [](InputConfig& c) { c.bypassEffects = true; });
+    r.run(1.0);
+    CHECK(r.sim->lastOptions(kAux).rawMode);
+    CHECK(r.sim->lastOptions(kUsbMic).rawMode);
+    CHECK(r.outView(kAux).runState == RunState::Running);
+    r.run(1.0);
+    expectTone(r.record(kAux, 2.0), kUsbHz, 48000, kAmp, "after re-open in raw mode");
+}

@@ -64,6 +64,14 @@ struct StreamFormat {
     std::string describe() const;
 };
 
+// One physical connector reported by the driver (IKsJackDescription).
+struct JackInfo {
+    std::string connector;   // "3.5 mm", "RCA", "Optical", "XLR", ...
+    std::string location;    // "left side", "rear", "front", ...
+    bool connected = false;  // something is plugged in
+    bool integrated = false; // built-in transducer (internal speaker / mic), not a socket
+};
+
 struct DeviceInfo {
     std::string id;             // unique endpoint ID (IMMDevice::GetId), UTF-8
     std::string friendlyName;   // PKEY_Device_FriendlyName, e.g. "Microphone (USB Audio Device)"
@@ -81,12 +89,24 @@ struct DeviceInfo {
     bool isBluetoothHandsFree = false;   // Bluetooth HFP/HSP endpoint (narrow-band mic profile)
     StreamFormat mixFormat;              // shared-mode mix format (valid for active devices)
     bool mixFormatValid = false;
+    std::vector<JackInfo> jacks;         // physical connectors behind this endpoint (may be empty)
+    float windowsVolume = -1.0f;         // endpoint volume in Windows (0..1), -1 = unknown
+    bool windowsMuted = false;           // endpoint muted in Windows
 };
 
 const char* toString(DeviceState s);
 const char* toString(DeviceBus b);
 const char* toString(FormFactor f);
 const char* toString(SampleType t);
+
+// "3.5 mm jack (left side): plugged in" for every real socket; empty if the driver
+// reports none.
+std::string jackSummary(const DeviceInfo& d);
+// True if a socket (not a built-in transducer) of this endpoint has something plugged in.
+bool hasPluggedJack(const DeviceInfo& d);
+// Virtual endpoints created by audio-enhancement software (Nahimic, Sonic Studio, ...)
+// that do not produce sound on a physical speaker by themselves.
+bool isEnhancementVirtualDevice(const DeviceInfo& d);
 
 // Human readable category such as "Bluetooth headset microphone" or "HDMI / DisplayPort audio".
 std::string deviceCategory(const DeviceInfo& d);

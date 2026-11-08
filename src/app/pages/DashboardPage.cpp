@@ -69,6 +69,11 @@ DashboardPage::DashboardPage(EngineController* ctl, QWidget* parent) : Page(ctl,
     banner_->setWordWrap(true);
     banner_->hide();
     v->addWidget(banner_);
+    hint_ = new QLabel;
+    hint_->setObjectName("bannerInfo");
+    hint_->setWordWrap(true);
+    hint_->hide();
+    v->addWidget(hint_);
 
     auto* stats = new QWidget;
     auto* grid = new QGridLayout(stats);
@@ -218,6 +223,17 @@ void DashboardPage::setSnapshot(const ab::EngineSnapshot& s)
     outputsValue_->setText(QString::number(outEnabled));
     outputsSub_->setText(tr("enabled · %1 detected · %2 streaming").arg(outDetected).arg(outRunning));
     routesValue_->setText(QString::number(active));
+    QString hint;
+    if (inEnabled == 0 || outEnabled == 0)
+        hint = tr("To hear a microphone: enable it on the Inputs page, enable a speaker on the Outputs page, then "
+                  "connect them in the Routing Matrix.");
+    else if (s.routes.empty())
+        hint = tr("Your devices are enabled but not connected to each other, so you will see levels but hear nothing. "
+                  "Open the Routing Matrix and click the cell where your microphone meets your speaker.");
+    else if (!s.monitoring)
+        hint = tr("Press Start monitoring to hear your routes.");
+    hint_->setText(hint);
+    hint_->setVisible(!hint.isEmpty());
     routesSub_->setText(tr("of %n configured", "", static_cast<int>(s.routes.size())));
     latencySub_->setText(tr("%1 kHz engine · %2 ms buffer").arg(s.settings.sampleRate / 1000.0).arg(s.settings.bufferMs));
     if (!s.monitoring)

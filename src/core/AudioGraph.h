@@ -61,6 +61,7 @@ struct OutputSlot {
     std::atomic<float> deviceLatencyMs{0.0f};    // WASAPI buffer + stream latency
     std::atomic<float> driftPpm{0.0f};           // clock correction of the first active route
     std::atomic<float> limiterReductionDb{0.0f};
+    std::atomic<int> testToneRequests{0};        // incremented by the control thread: play the test chime
 };
 
 struct RouteCell {

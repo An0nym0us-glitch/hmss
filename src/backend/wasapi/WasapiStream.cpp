@@ -70,8 +70,18 @@ std::unique_ptr<WasapiStream> WasapiStream::openCapture(IMMDeviceEnumerator* enu
 {
     std::unique_ptr<WasapiStream> s(new WasapiStream());
     s->processor_ = &processor;
-    if (!s->init(enumerator, device, options, true, error))
-        return nullptr;
+    if (!s->init(enumerator, device, options, true, error)) {
+        if (!options.rawMode)
+            return nullptr;
+        // Raw mode refused by the driver: fall back to a normal stream.
+        StreamOptions normal = options;
+        normal.rawMode = false;
+        s.reset(new WasapiStream());
+        s->processor_ = &processor;
+        if (!s->init(enumerator, device, normal, true, error))
+            return nullptr;
+        s->notes_ = "This device does not support bypassing audio effects; using normal mode. " + s->notes_;
+    }
     processor.prepare(s->format_);
     if (!s->start(error))
         return nullptr;
@@ -84,8 +94,17 @@ std::unique_ptr<WasapiStream> WasapiStream::openRender(IMMDeviceEnumerator* enum
 {
     std::unique_ptr<WasapiStream> s(new WasapiStream());
     s->mixer_ = &mixer;
-    if (!s->init(enumerator, device, options, false, error))
-        return nullptr;
+    if (!s->init(enumerator, device, options, false, error)) {
+        if (!options.rawMode)
+            return nullptr;
+        StreamOptions normal = options;
+        normal.rawMode = false;
+        s.reset(new WasapiStream());
+        s->mixer_ = &mixer;
+        if (!s->init(enumerator, device, normal, false, error))
+            return nullptr;
+        s->notes_ = "This device does not support bypassing audio effects; using normal mode. " + s->notes_;
+    }
     mixer.prepare(s->format_);
     if (!s->start(error))
         return nullptr;
@@ -118,21 +137,38 @@ bool WasapiStream::init(IMMDeviceEnumerator* enumerator, const DeviceInfo& info,
 
     std::ostringstream notes;
 
-    // Optional Windows voice processing (communications signal-processing mode).
-    if (capture && options.voiceProcessing) {
+    // Optional stream properties (must be set before Initialize):
+    //  * voice processing: Communications category -> the OS/driver applies its voice
+    //    processing chain (AEC / NS / AGC) where available;
+    //  * raw mode: skip the endpoint's audio effects (APOs) such as Nahimic or Dolby,
+    //    if the driver supports it.
+    const bool wantComms = capture && options.voiceProcessing;
+    const bool wantRaw = options.rawMode && !wantComms;
+    if (options.rawMode && wantComms)
+        notes << "Bypassing audio effects is not combined with Windows voice processing. ";
+    if (wantComms || wantRaw) {
         ComPtr<IAudioClient2> client2;
         if (SUCCEEDED(client_->QueryInterface(kIID_IAudioClient2, client2.putVoid()))) {
             AudioClientProperties props = {};
             props.cbSize = sizeof(props);
             props.bIsOffload = FALSE;
-            props.eCategory = AudioCategory_Communications;
-            props.Options = AUDCLNT_STREAMOPTIONS_NONE;
-            if (SUCCEEDED(client2->SetClientProperties(&props)))
-                notes << "Windows voice processing (communications mode) requested. ";
-            else
+            props.eCategory = wantComms ? AudioCategory_Communications : AudioCategory_Other;
+            props.Options = wantRaw ? AUDCLNT_STREAMOPTIONS_RAW : AUDCLNT_STREAMOPTIONS_NONE;
+            const HRESULT phr = client2->SetClientProperties(&props);
+            if (SUCCEEDED(phr)) {
+                if (wantComms)
+                    notes << "Windows voice processing (communications mode) requested. ";
+                if (wantRaw)
+                    notes << "Windows audio effects bypassed (raw mode). ";
+            } else {
+                if (wantRaw && error)
+                    *error = "This device does not support bypassing audio effects (raw mode)";
+                if (wantRaw)
+                    return false; // caller retries without raw mode
                 notes << "Voice processing not accepted by this device. ";
+            }
         } else {
-            notes << "Voice processing requires Windows 8 or later. ";
+            notes << "Stream properties require Windows 8.1 or later. ";
         }
     }
 

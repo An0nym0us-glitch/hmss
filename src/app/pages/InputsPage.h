@@ -17,7 +17,7 @@ class InputCard : public QFrame {
     Q_OBJECT
 public:
     InputCard(EngineController* ctl, const ab::InputView& v, int colorIndex, QWidget* parent = nullptr);
-    void update(const ab::InputView& v, bool monitoring, bool voiceProcessingSupported);
+    void update(const ab::InputView& v, const ab::EngineSnapshot& s);
     void updateMeter(const MeterFrame& f);
     const std::string& id() const { return id_; }
 
@@ -52,6 +52,10 @@ private:
     QLabel* voiceLabel_;
     QLabel* message_;
     QLabel* btBanner_;
+    QLabel* virtualWarn_;
+    QWidget* winWarn_;
+    QLabel* winWarnText_;
+    ToggleSwitch* bypass_;
 };
 
 class InputsPage : public Page {

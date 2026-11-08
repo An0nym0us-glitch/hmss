@@ -20,6 +20,7 @@ struct SimulatedBackend::Device {
     std::vector<float> rec;
     std::atomic<std::uint64_t> rendered{0};
     Stream* stream = nullptr;
+    StreamOptions lastOptions;
 };
 
 class SimulatedBackend::Stream : public IAudioStream {
@@ -213,12 +214,15 @@ std::vector<DeviceInfo> SimulatedBackend::enumerateDevices()
         i.mixFormat.channels = d->spec.channels;
         i.mixFormat.sampleType = d->spec.sampleType;
         i.mixFormatValid = true;
+        i.jacks = d->spec.jacks;
+        i.windowsVolume = d->spec.windowsVolume;
+        i.windowsMuted = d->spec.windowsMuted;
         v.push_back(i);
     }
     return v;
 }
 
-std::unique_ptr<IAudioStream> SimulatedBackend::openCapture(const DeviceInfo& device, const StreamOptions&,
+std::unique_ptr<IAudioStream> SimulatedBackend::openCapture(const DeviceInfo& device, const StreamOptions& options,
                                                             AudioInputProcessor& processor, std::string* error)
 {
     std::unique_ptr<Stream> s;
@@ -233,6 +237,7 @@ std::unique_ptr<IAudioStream> SimulatedBackend::openCapture(const DeviceInfo& de
             if (error) *error = "Device is in use by another application";
             return nullptr;
         }
+        d->lastOptions = options;
         s.reset(new Stream(this, d, &processor, nullptr, now_));
         processor.prepare(s->fmt_);
         d->stream = s.get();
@@ -243,7 +248,7 @@ std::unique_ptr<IAudioStream> SimulatedBackend::openCapture(const DeviceInfo& de
     return s;
 }
 
-std::unique_ptr<IAudioStream> SimulatedBackend::openRender(const DeviceInfo& device, const StreamOptions&,
+std::unique_ptr<IAudioStream> SimulatedBackend::openRender(const DeviceInfo& device, const StreamOptions& options,
                                                            AudioOutputMixer& mixer, std::string* error)
 {
     std::unique_ptr<Stream> s;
@@ -258,6 +263,7 @@ std::unique_ptr<IAudioStream> SimulatedBackend::openRender(const DeviceInfo& dev
             if (error) *error = "Device is in use by another application";
             return nullptr;
         }
+        d->lastOptions = options;
         s.reset(new Stream(this, d, nullptr, &mixer, now_));
         mixer.prepare(s->fmt_);
         d->stream = s.get();
@@ -365,6 +371,13 @@ std::uint64_t SimulatedBackend::renderedFrames(const std::string& id) const
     std::lock_guard<std::mutex> lk(mutex_);
     Device* d = find(id);
     return d ? d->rendered.load() : 0;
+}
+
+StreamOptions SimulatedBackend::lastOptions(const std::string& id) const
+{
+    std::lock_guard<std::mutex> lk(mutex_);
+    Device* d = find(id);
+    return d ? d->lastOptions : StreamOptions();
 }
 
 int SimulatedBackend::openStreamCount() const

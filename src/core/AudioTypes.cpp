@@ -91,8 +91,42 @@ static bool containsNoCase(const std::string& hay, const char* needle)
     return h.find(n) != std::string::npos;
 }
 
+std::string jackSummary(const DeviceInfo& d)
+{
+    std::string out;
+    for (const JackInfo& j : d.jacks) {
+        if (j.integrated)
+            continue;
+        if (!out.empty())
+            out += ", ";
+        out += (j.connector.empty() ? std::string("Jack") : j.connector + " jack");
+        if (!j.location.empty())
+            out += " (" + j.location + ")";
+        out += j.connected ? ": plugged in" : ": empty";
+    }
+    return out;
+}
+
+bool hasPluggedJack(const DeviceInfo& d)
+{
+    for (const JackInfo& j : d.jacks)
+        if (!j.integrated && j.connected)
+            return true;
+    return false;
+}
+
+bool isEnhancementVirtualDevice(const DeviceInfo& d)
+{
+    const std::string n = d.friendlyName + " " + d.adapterName + " " + d.description;
+    return containsNoCase(n, "nahimic") || containsNoCase(n, "a-volute") || containsNoCase(n, "mirroring") ||
+           containsNoCase(n, "sonic studio virtual") || containsNoCase(n, "sonic radar");
+}
+
 std::string deviceCategory(const DeviceInfo& d)
 {
+    if (isEnhancementVirtualDevice(d))
+        return containsNoCase(d.friendlyName + d.adapterName, "nahimic") ? "Nahimic virtual device (no speaker)"
+                                                                         : "Virtual effects device (no speaker)";
     const bool capture = d.flow == DeviceFlow::Capture;
     const std::string allNames = d.friendlyName + " " + d.adapterName;
     switch (d.bus) {
@@ -136,6 +170,17 @@ std::string deviceCategory(const DeviceInfo& d)
             return "Wired headset microphone";
         return d.bus == DeviceBus::Internal ? "Microphone (built-in / jack)" : "Recording device";
     }
+    if (!d.jacks.empty() && d.bus != DeviceBus::Display) {
+        // The driver told us about real sockets: say what is actually connected.
+        if (hasPluggedJack(d))
+            return "AUX / headphone jack (plugged in)";
+        bool integrated = false;
+        for (const JackInfo& j : d.jacks)
+            integrated = integrated || j.integrated;
+        if (integrated)
+            return "Laptop speakers (jack empty)";
+        return "AUX / headphone jack (nothing plugged in)";
+    }
     if (d.formFactor == FormFactor::Headphones)
         return "Wired headphones / AUX";
     if (d.formFactor == FormFactor::LineLevel)
@@ -149,6 +194,12 @@ DeviceBus classifyDeviceBus(const std::string& interfacePath, const std::string&
                             const std::string& adapterName, FormFactor formFactor, bool* handsFree)
 {
     const std::string names = friendlyName + " " + adapterName;
+    if (containsNoCase(names, "nahimic") || containsNoCase(names, "a-volute") || containsNoCase(names, "mirroring") ||
+        containsNoCase(names, "sonic studio virtual")) {
+        if (handsFree)
+            *handsFree = false;
+        return DeviceBus::Virtual; // enhancement software endpoint, not hardware
+    }
     bool hf = containsNoCase(interfacePath, "bthhfenum") || containsNoCase(names, "hands-free") ||
               containsNoCase(names, "handsfree");
     DeviceBus bus = DeviceBus::Unknown;

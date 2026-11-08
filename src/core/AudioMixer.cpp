@@ -28,6 +28,8 @@ void AudioOutputMixer::prepare(const StreamFormat& deviceFormat)
     outGain_.setImmediate(0.0f);
     limiter_.prepare(format_.sampleRate);
     maxBlockSeen_ = 0.0;
+    testRequestsSeen_ = graph_->outputs[slot_].testToneRequests.load();
+    testPos_ = -1;
 
     const std::size_t maxIn = static_cast<std::size_t>(std::ceil(kChunk * nominalRatio_ * 1.02)) + 128;
     mix_.assign(kChunk * kEngineChannels, 0.0f);
@@ -192,6 +194,16 @@ void AudioOutputMixer::renderChunk(std::uint8_t* dst, std::size_t frames)
                                : 0.0f);
     outGain_.applyStereo(mix_.data(), frames);
 
+    // Identification chime: played at a fixed level, independent of faders and mutes,
+    // so the user can hear which physical speaker this output is.
+    const int req = out.testToneRequests.load(std::memory_order_relaxed);
+    if (req != testRequestsSeen_) {
+        testRequestsSeen_ = req;
+        testPos_ = 0;
+    }
+    if (testPos_ >= 0)
+        addTestTone(mix_.data(), frames);
+
     limiter_.setEnabled(graph_->limiterEnabled.load(std::memory_order_relaxed));
     limiter_.setFeedbackGuard(graph_->feedbackGuard.load(std::memory_order_relaxed));
     if (limiter_.processStereo(mix_.data(), frames))
@@ -201,6 +213,28 @@ void AudioOutputMixer::renderChunk(std::uint8_t* dst, std::size_t frames)
 
     stereoToChannels(mix_.data(), frames, format_.channels, format_.channelMask, devBuf_.data());
     floatToDevice(devBuf_.data(), format_.sampleType, format_.channels, frames, dst);
+}
+
+void AudioOutputMixer::addTestTone(float* stereo, std::size_t frames)
+{
+    // Three rising notes (A5, E6, A6), 0.25 s each, soft attack/decay, -14 dBFS.
+    const double sr = format_.sampleRate;
+    const long noteLen = static_cast<long>(sr * 0.25);
+    const double freqs[3] = {880.0, 1318.5, 1760.0};
+    for (std::size_t f = 0; f < frames; ++f, ++testPos_) {
+        const long note = testPos_ / noteLen;
+        if (note >= 3) {
+            testPos_ = -1;
+            return;
+        }
+        const long inNote = testPos_ % noteLen;
+        const double t = static_cast<double>(inNote) / sr;
+        const double attack = std::min(1.0, t / 0.01);
+        const double decay = std::exp(-t * 9.0);
+        const float v = static_cast<float>(0.2 * attack * decay * std::sin(2.0 * kPi * freqs[note] * testPos_ / sr));
+        stereo[2 * f] += v;
+        stereo[2 * f + 1] += v;
+    }
 }
 
 } // namespace ab

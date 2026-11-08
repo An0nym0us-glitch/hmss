@@ -386,7 +386,8 @@ bool AudioEngine::setInputConfig(const InputConfig& cfgIn, std::string* error)
     if (cfg.lastKnownName.empty())
         cfg.lastKnownName = rt.cfg.lastKnownName;
     const bool wasEnabled = rt.cfg.enabled;
-    const bool reopen = rt.stream && cfg.voiceProcessing != rt.cfg.voiceProcessing;
+    const bool reopen = rt.stream && (cfg.voiceProcessing != rt.cfg.voiceProcessing ||
+                                      cfg.bypassEffects != rt.cfg.bypassEffects);
     rt.cfg = cfg;
     bool ok = true;
     if (cfg.enabled && !wasEnabled) {
@@ -426,6 +427,7 @@ bool AudioEngine::setOutputConfig(const OutputConfig& cfgIn, std::string* error)
         cfg.lastKnownName = rt.cfg.lastKnownName;
     const bool wasEnabled = rt.cfg.enabled;
     const bool unmuted = rt.cfg.mute && !cfg.mute;
+    const bool reopen = rt.stream && cfg.bypassEffects != rt.cfg.bypassEffects;
     rt.cfg = cfg;
     bool ok = true;
     if (cfg.enabled && !wasEnabled) {
@@ -438,6 +440,10 @@ bool AudioEngine::setOutputConfig(const OutputConfig& cfgIn, std::string* error)
         }
     } else if (!cfg.enabled && wasEnabled) {
         releaseOutputSlot(rt);
+    }
+    if (reopen) {
+        closeOutput(rt);
+        rt.nextRetry = 0.0;
     }
     // Unmuting an output also acknowledges a feedback-guard trip.
     if (unmuted && rt.slot >= 0)
@@ -512,6 +518,15 @@ void AudioEngine::clearFeedbackTrip(const std::string& outputId)
     }
 }
 
+bool AudioEngine::playTestTone(const std::string& outputId)
+{
+    auto it = outputs_.find(outputId);
+    if (it == outputs_.end() || !it->second.stream || it->second.slot < 0)
+        return false;
+    graph_.outputs[it->second.slot].testToneRequests.fetch_add(1);
+    return true;
+}
+
 EngineConfig AudioEngine::config() const
 {
     EngineConfig c;
@@ -524,13 +539,14 @@ EngineConfig AudioEngine::config() const
         def.lastKnownName = ic.lastKnownName;
         const bool touched = ic.enabled || isRouted(ic.id) || ic.gainDb != def.gainDb || ic.volume != def.volume ||
                              ic.mute || ic.solo || ic.monoMix != def.monoMix || ic.highPass || ic.noiseSuppression ||
-                             ic.noiseGate || ic.voiceProcessing;
+                             ic.noiseGate || ic.voiceProcessing || ic.bypassEffects;
         if (touched)
             c.inputs.push_back(ic);
     }
     for (const auto& kv : outputs_) {
         const OutputConfig& oc = kv.second.cfg;
-        const bool touched = oc.enabled || isRouted(oc.id) || oc.volume != 1.0f || oc.mute || oc.delayMs != 0.0f;
+        const bool touched = oc.enabled || isRouted(oc.id) || oc.volume != 1.0f || oc.mute || oc.delayMs != 0.0f ||
+                             oc.bypassEffects;
         if (touched)
             c.outputs.push_back(oc);
     }
@@ -635,6 +651,7 @@ void AudioEngine::ensureInput(InputRuntime& rt)
         opt.voiceProcessing = rt.cfg.voiceProcessing;
         rt.echoReference = rt.cfg.voiceProcessing ? echoReferenceFor(rt) : std::string();
         opt.echoReferenceId = rt.echoReference;
+        opt.rawMode = rt.cfg.bypassEffects;
         std::string err;
         rt.stream = backend_->openCapture(rt.info, opt, *rt.proc, &err);
         if (rt.stream) {
@@ -711,7 +728,9 @@ void AudioEngine::ensureOutput(OutputRuntime& rt)
         rt.mixer->bind(&graph_, rt.slot);
         applyOutputParams(rt);
         std::string err;
-        rt.stream = backend_->openRender(rt.info, streamOptions(), *rt.mixer, &err);
+        StreamOptions opt = streamOptions();
+        opt.rawMode = rt.cfg.bypassEffects;
+        rt.stream = backend_->openRender(rt.info, opt, *rt.mixer, &err);
         if (rt.stream) {
             graph_.outputs[rt.slot].active.store(true, std::memory_order_release);
             graph_.outputs[rt.slot].deviceLatencyMs.store(static_cast<float>(rt.stream->deviceLatencyMs()));
@@ -803,9 +822,19 @@ EngineSnapshot AudioEngine::snapshot() const
         v.config = rt.cfg;
         s.outputs.push_back(std::move(v));
     }
+    // Connected devices first, real hardware before virtual/effects endpoints, endpoints
+    // with a plugged-in jack, the Windows default, then alphabetical.
     auto order = [](const DeviceView& a, const DeviceView& b) {
         if (a.present != b.present)
-            return a.present; // connected devices first
+            return a.present;
+        const bool va = a.info.bus == DeviceBus::Virtual, vb = b.info.bus == DeviceBus::Virtual;
+        if (va != vb)
+            return !va;
+        const bool ja = hasPluggedJack(a.info), jb = hasPluggedJack(b.info);
+        if (ja != jb)
+            return ja; // e.g. the laptop AUX jack with a cable in it
+        if (a.info.isDefault != b.info.isDefault)
+            return a.info.isDefault;
         return a.info.displayName < b.info.displayName;
     };
     std::sort(s.inputs.begin(), s.inputs.end(), order);

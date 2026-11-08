@@ -14,7 +14,7 @@ class OutputCard : public QFrame {
     Q_OBJECT
 public:
     OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* parent = nullptr);
-    void update(const ab::OutputView& v, bool monitoring);
+    void update(const ab::OutputView& v, const ab::EngineSnapshot& s);
     void updateMeter(const MeterFrame& f);
 
 private:
@@ -38,6 +38,13 @@ private:
     QLabel* stats_;
     QLabel* message_;
     QWidget* feedback_;
+    QLabel* jack_;
+    QLabel* virtualWarn_;
+    QWidget* winWarn_;
+    QLabel* winWarnText_;
+    QPushButton* test_;
+    ToggleSwitch* bypass_;
+    QLabel* bypassNote_;
 };
 
 class OutputsPage : public Page {

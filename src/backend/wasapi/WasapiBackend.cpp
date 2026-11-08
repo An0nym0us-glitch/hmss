@@ -58,22 +58,79 @@ bool readFormat(IPropertyStore* store, const PROPERTYKEY& key, StreamFormat* out
     return ok;
 }
 
-// Kernel-streaming filter path of the adapter the endpoint is connected to, e.g.
-// "{2}.\\?\usb#vid_..." or "{2}.\\?\bthhfenum#...". Only works for active endpoints.
-std::string topologyPath(IMMDevice* device)
+const char* connectorName(int t)
+{
+    switch (t) {
+    case 1: return "3.5 mm";
+    case 2: return "6.3 mm";
+    case 3: return "Internal";
+    case 4: return "RCA";
+    case 5: return "Optical";
+    case 6: return "Digital";
+    case 7: return "Analog";
+    case 8: return "DIN";
+    case 9: return "XLR";
+    case 11: return "Combo";
+    default: return "";
+    }
+}
+
+const char* locationName(int g)
+{
+    switch (g) {
+    case 1: return "rear";
+    case 2: return "front";
+    case 3: return "left side";
+    case 4: return "right side";
+    case 5: return "top";
+    case 6: return "bottom";
+    case 7: return "rear panel";
+    case 9: return "inside lid";
+    case 11: return "HDMI";
+    case 12: return "outside lid";
+    default: return "";
+    }
+}
+
+// Follows the endpoint's topology to the adapter (kernel-streaming filter):
+//  * `path`: the filter's device-interface path, e.g. "{2}.\\?\usb#vid_..." or
+//    "{2}.\\?\bthhfenum#..." (connection type detection);
+//  * `jacks`: the physical connectors reported by the driver (IKsJackDescription),
+//    including whether something is plugged in.
+// Only works for active endpoints.
+void readTopology(IMMDevice* device, std::string* path, std::vector<JackInfo>* jacks)
 {
     ComPtr<IDeviceTopology> topo;
     if (FAILED(device->Activate(kIID_IDeviceTopology, CLSCTX_ALL, nullptr, topo.putVoid())))
-        return {};
+        return;
     ComPtr<IConnector> conn;
     if (FAILED(topo->GetConnector(0, conn.put())))
-        return {};
+        return;
     ComPtr<IConnector> to;
     if (FAILED(conn->GetConnectedTo(to.put())))
-        return {};
+        return;
     ComPtr<IPart> part;
     if (FAILED(to->QueryInterface(kIID_IPart, part.putVoid())))
-        return {};
+        return;
+
+    ComPtr<IKsJackDescription> jd;
+    if (SUCCEEDED(part->Activate(CLSCTX_INPROC_SERVER, kIID_IKsJackDescription, jd.putVoid()))) {
+        UINT count = 0;
+        if (SUCCEEDED(jd->GetJackCount(&count))) {
+            for (UINT i = 0; i < count && i < 16; ++i) {
+                KSJACK_DESCRIPTION d = {};
+                if (FAILED(jd->GetJackDescription(i, &d)))
+                    continue;
+                JackInfo j;
+                j.connector = connectorName(static_cast<int>(d.ConnectionType));
+                j.location = locationName(static_cast<int>(d.GeoLocation));
+                j.connected = d.IsConnected != FALSE;
+                j.integrated = static_cast<int>(d.PortConnection) == 1; // ePortConnIntegratedDevice
+                jacks->push_back(j);
+            }
+        }
+    }
+
     ComPtr<IDeviceTopology> adapter;
 #if defined(__MINGW32__)
     // MinGW-w64's devicetopology.h misspells this method (same vtable slot).
@@ -81,14 +138,26 @@ std::string topologyPath(IMMDevice* device)
 #else
     if (FAILED(part->GetTopologyObject(adapter.put())))
 #endif
-        return {};
+        return;
     LPWSTR id = nullptr;
-    std::string s;
     if (SUCCEEDED(adapter->GetDeviceId(&id)) && id) {
-        s = toUtf8(id);
+        *path = toUtf8(id);
         CoTaskMemFree(id);
     }
-    return s;
+}
+
+// Windows' own volume / mute setting of the endpoint (what the volume mixer shows).
+void readEndpointVolume(IMMDevice* device, float* volume, bool* muted)
+{
+    ComPtr<IAudioEndpointVolume> ev;
+    if (FAILED(device->Activate(kIID_IAudioEndpointVolume, CLSCTX_ALL, nullptr, ev.putVoid())))
+        return;
+    float v = 0.0f;
+    BOOL m = FALSE;
+    if (SUCCEEDED(ev->GetMasterVolumeLevelScalar(&v)))
+        *volume = v;
+    if (SUCCEEDED(ev->GetMute(&m)))
+        *muted = m != FALSE;
 }
 
 std::string defaultId(IMMDeviceEnumerator* e, EDataFlow flow, ERole role)
@@ -269,8 +338,10 @@ std::vector<DeviceInfo> WasapiBackend::enumerateDevices()
             // compose from what Windows does provide.
             info.friendlyName = !info.description.empty() ? info.description : info.adapterName;
         }
-        if (info.state == DeviceState::Active)
-            info.interfacePath = topologyPath(dev.get());
+        if (info.state == DeviceState::Active) {
+            readTopology(dev.get(), &info.interfacePath, &info.jacks);
+            readEndpointVolume(dev.get(), &info.windowsVolume, &info.windowsMuted);
+        }
         bool handsFree = false;
         info.bus = classifyDeviceBus(info.interfacePath, info.friendlyName, info.adapterName, info.formFactor,
                                      &handsFree);

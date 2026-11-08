@@ -47,6 +47,7 @@ ab::EngineConfig loadEngineConfig()
         ic.noiseGate = s.value("noiseGate", false).toBool();
         ic.gateThresholdDb = s.value("gateThresholdDb", -50.0).toFloat();
         ic.voiceProcessing = s.value("voiceProcessing", false).toBool();
+        ic.bypassEffects = s.value("bypassEffects", false).toBool();
         c.inputs.push_back(ic);
     }
     s.endArray();
@@ -63,6 +64,7 @@ ab::EngineConfig loadEngineConfig()
         oc.volume = s.value("volume", 1.0).toFloat();
         oc.mute = s.value("mute", false).toBool();
         oc.delayMs = s.value("delayMs", 0.0).toFloat();
+        oc.bypassEffects = s.value("bypassEffects", false).toBool();
         c.outputs.push_back(oc);
     }
     s.endArray();
@@ -113,6 +115,7 @@ void saveEngineConfig(const ab::EngineConfig& c)
         s.setValue("noiseGate", ic.noiseGate);
         s.setValue("gateThresholdDb", static_cast<double>(ic.gateThresholdDb));
         s.setValue("voiceProcessing", ic.voiceProcessing);
+        s.setValue("bypassEffects", ic.bypassEffects);
     }
     s.endArray();
 
@@ -127,6 +130,7 @@ void saveEngineConfig(const ab::EngineConfig& c)
         s.setValue("volume", static_cast<double>(oc.volume));
         s.setValue("mute", oc.mute);
         s.setValue("delayMs", static_cast<double>(oc.delayMs));
+        s.setValue("bypassEffects", oc.bypassEffects);
     }
     s.endArray();
 

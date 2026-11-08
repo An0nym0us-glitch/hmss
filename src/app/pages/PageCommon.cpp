@@ -1,6 +1,9 @@
 #include "PageCommon.h"
 
+#include <QDesktopServices>
 #include <QHBoxLayout>
+#include <QPushButton>
+#include <QUrl>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -125,6 +128,62 @@ QString formatLine(const ab::DeviceView& v)
     if (v.info.mixFormatValid)
         return QString::fromStdString(v.info.mixFormat.describe());
     return QString();
+}
+
+QWidget* windowsVolumeWarning(QLabel** text)
+{
+    auto* w = new QWidget;
+    auto* h = new QHBoxLayout(w);
+    h->setContentsMargins(0, 0, 0, 0);
+    auto* t = new QLabel;
+    t->setObjectName("banner");
+    t->setWordWrap(true);
+    auto* b = new QPushButton(QObject::tr("Windows sound settings"));
+    QObject::connect(b, &QPushButton::clicked, [] {
+#ifdef Q_OS_WIN
+        QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:sound")));
+#endif
+    });
+    h->addWidget(t, 1);
+    h->addWidget(b);
+    *text = t;
+    return w;
+}
+
+QString windowsVolumeProblem(const ab::DeviceInfo& d)
+{
+    if (d.state != ab::DeviceState::Active || d.windowsVolume < 0.0f)
+        return QString();
+    if (d.windowsMuted)
+        return QObject::tr("Windows has this device MUTED. AudioBridge sends audio to it, but Windows silences it. "
+                           "Unmute it in the Windows volume mixer / sound settings.");
+    if (d.windowsVolume < 0.05f)
+        return QObject::tr("Windows volume for this device is at %1 %. Raise it in Windows sound settings.")
+            .arg(static_cast<int>(d.windowsVolume * 100.0f + 0.5f));
+    return QString();
+}
+
+QString virtualDeviceWarning(const ab::DeviceInfo& d)
+{
+    if (!ab::isEnhancementVirtualDevice(d))
+        return QString();
+    const bool nahimic = QString::fromStdString(d.friendlyName + d.adapterName).contains("nahimic", Qt::CaseInsensitive);
+    if (d.flow == ab::DeviceFlow::Render)
+        return QObject::tr("This is a virtual device created by %1. It does not play sound on any physical speaker. "
+                           "For the laptop's AUX / headphone port, use the Realtek output marked "
+                           "“3.5 mm jack: plugged in” (or press Test on each output to hear which one it is).")
+            .arg(nahimic ? QStringLiteral("Nahimic") : QObject::tr("audio-enhancement software"));
+    return QObject::tr("This is a virtual recording device created by %1, not a physical microphone.")
+        .arg(nahimic ? QStringLiteral("Nahimic") : QObject::tr("audio-enhancement software"));
+}
+
+int routeCount(const ab::EngineSnapshot& s, const std::string& id)
+{
+    int n = 0;
+    for (const auto& r : s.routes)
+        if (r.inputId == id || r.outputId == id)
+            ++n;
+    return n;
 }
 
 } // namespace ui

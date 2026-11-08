@@ -61,6 +61,9 @@ private:
     SmoothedValue outGain_;
     Limiter limiter_;
     double maxBlockSeen_ = 0.0; // decaying peak of the device block size
+    int testRequestsSeen_ = 0;
+    long testPos_ = -1;         // sample position inside the test chime, -1 = idle
+    void addTestTone(float* stereo, std::size_t frames);
 
     std::vector<float> mix_;
     std::vector<float> routeIn_;

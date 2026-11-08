@@ -211,3 +211,15 @@ void EngineController::clearFeedbackTrip(const std::string& outputId)
 {
     post([this, outputId] { engine_->clearFeedbackTrip(outputId); afterChange(); });
 }
+
+void EngineController::playTestTone(const std::string& outputId)
+{
+    post([this, outputId] {
+        if (!engine_->isMonitoring())
+            engine_->startMonitoring();
+        if (!engine_->playTestTone(outputId))
+            emit errorMessage(tr("This output is not streaming, so the test sound cannot be played. "
+                                 "Check its status message on the Outputs page."));
+        afterChange();
+    });
+}

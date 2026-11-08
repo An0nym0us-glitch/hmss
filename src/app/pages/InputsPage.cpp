@@ -97,6 +97,12 @@ InputCard::InputCard(EngineController* ctl, const ab::InputView& v, int colorInd
     btBanner_->setObjectName("bannerInfo");
     btBanner_->setWordWrap(true);
     root->addWidget(btBanner_);
+    virtualWarn_ = new QLabel;
+    virtualWarn_->setObjectName("banner");
+    virtualWarn_->setWordWrap(true);
+    root->addWidget(virtualWarn_);
+    winWarn_ = ui::windowsVolumeWarning(&winWarnText_);
+    root->addWidget(winWarn_);
 
     // Controls (visible when enabled).
     controls_ = new QWidget;
@@ -173,6 +179,10 @@ InputCard::InputCard(EngineController* ctl, const ab::InputView& v, int colorInd
                                 tr("Opens the microphone in Windows communications mode so the driver/OS can apply its "
                                    "own echo cancellation, noise suppression and gain control. Availability depends on "
                                    "the device driver; the result is shown below.")));
+    bypass_ = new ToggleSwitch;
+    voiceRow->addWidget(labeled(bypass_, tr("Bypass Windows audio effects"),
+                                tr("Opens the microphone in Windows RAW mode so effects such as Nahimic are not applied. "
+                                   "Only works if the driver supports it.")));
     voiceLabel_ = new QLabel;
     voiceLabel_->setObjectName("dim");
     voiceLabel_->setWordWrap(true);
@@ -214,10 +224,13 @@ InputCard::InputCard(EngineController* ctl, const ab::InputView& v, int colorInd
         edit([v](ab::InputConfig& c) { c.gateThresholdDb = static_cast<float>(v); });
     });
     connect(voice_, &QAbstractButton::toggled, this, [this](bool on) { edit([on](ab::InputConfig& c) { c.voiceProcessing = on; }); });
+    connect(bypass_, &QAbstractButton::toggled, this, [this](bool on) { edit([on](ab::InputConfig& c) { c.bypassEffects = on; }); });
 }
 
-void InputCard::update(const ab::InputView& v, bool monitoring, bool voiceProcessingSupported)
+void InputCard::update(const ab::InputView& v, const ab::EngineSnapshot& s)
 {
+    const bool monitoring = s.monitoring;
+    const bool voiceProcessingSupported = s.voiceProcessingSupported;
     const ab::InputConfig& c = v.config;
     slot_ = v.slot;
     running_ = v.runState == ab::RunState::Running;
@@ -257,19 +270,29 @@ void InputCard::update(const ab::InputView& v, bool monitoring, bool voiceProces
     gateThreshold_->setEnabled(c.noiseGate);
     gateLabel_->setText(Theme::dbText(c.gateThresholdDb, 0));
     voice_->setCheckedSilently(c.voiceProcessing);
+    bypass_->setCheckedSilently(c.bypassEffects);
+    const QString virt = ui::virtualDeviceWarning(v.info);
+    virtualWarn_->setText(virt);
+    virtualWarn_->setVisible(!virt.isEmpty());
+    const QString vol = ui::windowsVolumeProblem(v.info);
+    winWarnText_->setText(vol);
+    winWarn_->setVisible(!vol.isEmpty() && c.enabled);
     voice_->setEnabled(voiceProcessingSupported);
     if (!voiceProcessingSupported)
         voiceLabel_->setText(tr("Not available on this platform."));
-    else if (c.voiceProcessing && v.streamOpen)
+    else if ((c.voiceProcessing || c.bypassEffects) && v.streamOpen)
         voiceLabel_->setText(v.notes.empty() ? tr("Requested.") : QString::fromStdString(v.notes));
     else
-        voiceLabel_->setText(c.voiceProcessing ? tr("Applied when monitoring starts.") : QString());
+        voiceLabel_->setText((c.voiceProcessing || c.bypassEffects) ? tr("Applied when monitoring starts.") : QString());
     meter_->setActive(running_);
 
     QString msg = QString::fromStdString(v.message);
     if (!v.present && c.enabled)
         msg = tr("This microphone is disconnected. Your settings and routes are kept; AudioBridge reconnects it "
                  "automatically when Windows reports the same device again.");
+    else if (c.enabled && msg.isEmpty() && ui::routeCount(s, v.info.id) == 0)
+        msg = tr("This microphone is not connected to any output yet, so you will see its level but hear nothing. "
+                 "Connect it to a speaker in the Routing Matrix.");
     message_->setText(msg);
     message_->setVisible(!msg.isEmpty());
     setEnabled(true);
@@ -328,7 +351,7 @@ void InputsPage::setSnapshot(const ab::EngineSnapshot& s)
         ids_ = ids;
     }
     for (std::size_t i = 0; i < cards_.size(); ++i)
-        cards_[i]->update(*shown[i], s.monitoring, s.voiceProcessingSupported);
+        cards_[i]->update(*shown[i], s);
     empty_->setVisible(cards_.empty());
 }
 

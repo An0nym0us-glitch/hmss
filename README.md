@@ -43,6 +43,30 @@ Windows can block desktop apps from microphones (*Settings → Privacy & securit
 Microphone → Let desktop apps access your microphone*). If a microphone shows
 "Access denied", enable that switch.
 
+### "I see the microphone level but hear nothing"
+
+Check these in order. AudioBridge shows a hint for each one:
+
+1. **Is the microphone connected to the speaker?** The input meter moves as soon as a
+   microphone is enabled, but you only hear it after connecting it in the **Routing Matrix**.
+2. **Is it the right output?** On the **Outputs** page press **Test**: a short chime plays on
+   that output only. The laptop's AUX / headphone port is the Realtek output (usually named
+   "Speakers") that shows **"3.5 mm jack: plugged in"**.
+3. **Is Windows muting it?** A warning appears if Windows has the device muted or at 0 %
+   volume.
+
+### Lenovo laptops with Nahimic
+
+Nahimic (A-Volute) adds virtual devices such as **"Nahimic mirroring Wave Speaker"**.
+They look like speakers but produce no sound by themselves. AudioBridge labels them
+"Nahimic virtual device (no speaker)", lists them last and shows a warning. Use the Realtek
+device instead.
+
+Nahimic also applies its effects to the Realtek device. If audio sounds processed,
+delayed or is missing, turn on **"Bypass Windows audio effects"** for that device. This
+opens it in Windows RAW mode, so Nahimic's effects are skipped if the driver allows it. The
+card shows whether the bypass is active.
+
 ### Bluetooth earbuds as a microphone
 
 Windows exposes the earbuds' microphone through the Bluetooth **hands-free profile

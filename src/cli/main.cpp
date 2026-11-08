@@ -58,27 +58,33 @@ std::unique_ptr<IAudioBackend> makeBackend()
 #endif
 }
 
+void printDevice(int n, const DeviceInfo& d)
+{
+    std::printf("  [%d] %s%s\n", n, d.displayName.c_str(), d.isDefault ? "  (Windows default)" : "");
+    std::printf("       %s | %s | %s", deviceCategory(d).c_str(), toString(d.bus), toString(d.state));
+    if (d.mixFormatValid)
+        std::printf(" | %s", d.mixFormat.describe().c_str());
+    std::printf("\n");
+    const std::string jacks = jackSummary(d);
+    if (!jacks.empty())
+        std::printf("       %s\n", jacks.c_str());
+    if (d.windowsVolume >= 0.0f)
+        std::printf("       Windows volume %d%%%s\n", static_cast<int>(d.windowsVolume * 100.0f + 0.5f),
+                    d.windowsMuted ? " (MUTED in Windows)" : "");
+    if (isEnhancementVirtualDevice(d))
+        std::printf("       NOTE: virtual device of audio-enhancement software - it plays on no speaker by itself\n");
+    std::printf("       id: %s\n", d.id.c_str());
+}
+
 void printDevices(const EngineSnapshot& s)
 {
     int n = 1;
     std::printf("INPUT DEVICES (microphones / recording endpoints)\n");
-    for (const auto& v : s.inputs) {
-        const DeviceInfo& d = v.info;
-        std::printf("  [%d] %s%s\n", n++, d.displayName.c_str(), d.isDefault ? "  (Windows default)" : "");
-        std::printf("       %s | %s | %s", deviceCategory(d).c_str(), toString(d.bus), toString(d.state));
-        if (d.mixFormatValid)
-            std::printf(" | %s", d.mixFormat.describe().c_str());
-        std::printf("\n       id: %s\n", d.id.c_str());
-    }
+    for (const auto& v : s.inputs)
+        printDevice(n++, v.info);
     std::printf("\nOUTPUT DEVICES (speakers / playback endpoints)\n");
-    for (const auto& v : s.outputs) {
-        const DeviceInfo& d = v.info;
-        std::printf("  [%d] %s%s\n", n++, d.displayName.c_str(), d.isDefault ? "  (Windows default)" : "");
-        std::printf("       %s | %s | %s", deviceCategory(d).c_str(), toString(d.bus), toString(d.state));
-        if (d.mixFormatValid)
-            std::printf(" | %s", d.mixFormat.describe().c_str());
-        std::printf("\n       id: %s\n", d.id.c_str());
-    }
+    for (const auto& v : s.outputs)
+        printDevice(n++, v.info);
 }
 
 // Resolves "3" (list number) or a name fragment to an endpoint ID of the given flow.
@@ -122,7 +128,7 @@ void usage()
     std::printf("AudioBridge command line tool\n\n"
                 "  AudioBridgeCLI --list\n"
                 "  AudioBridgeCLI --route <input> <output> [--route <input> <output> ...]\n"
-                "                 [--rate 48000] [--buffer 20] [--seconds N]\n\n"
+                "                 [--rate 48000] [--buffer 20] [--seconds N] [--bypass-effects]\n\n"
                 "<input>/<output>: number from --list, or part of the device name.\n");
 }
 
@@ -142,6 +148,7 @@ int main(int argc, char** argv)
     std::vector<std::pair<std::string, std::string>> routes;
     int rate = 48000, buffer = 20;
     double seconds = 0.0;
+    bool bypass = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--list") list = true;
@@ -149,6 +156,7 @@ int main(int argc, char** argv)
         else if (a == "--rate" && i + 1 < argc) rate = std::atoi(argv[++i]);
         else if (a == "--buffer" && i + 1 < argc) buffer = std::atoi(argv[++i]);
         else if (a == "--seconds" && i + 1 < argc) seconds = std::atof(argv[++i]);
+        else if (a == "--bypass-effects") bypass = true;
         else { usage(); return 1; }
     }
 
@@ -179,15 +187,23 @@ int main(int argc, char** argv)
         InputConfig ic;
         engine.inputConfig(in, &ic);
         ic.enabled = true;
+        ic.bypassEffects = bypass;
         if (!engine.setInputConfig(ic, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 3; }
         OutputConfig oc;
         engine.outputConfig(out, &oc);
         oc.enabled = true;
+        oc.bypassEffects = bypass;
         if (!engine.setOutputConfig(oc, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 3; }
         engine.setRoute(in, out, true);
         std::printf("Route: %s  ->  %s\n", nameOf(snap, in).c_str(), nameOf(snap, out).c_str());
     }
     engine.startMonitoring();
+    for (const auto& v : engine.snapshot().inputs)
+        if (v.config.enabled && !v.notes.empty())
+            std::printf("  note (%s): %s\n", v.info.displayName.c_str(), v.notes.c_str());
+    for (const auto& v : engine.snapshot().outputs)
+        if (v.config.enabled && !v.notes.empty())
+            std::printf("  note (%s): %s\n", v.info.displayName.c_str(), v.notes.c_str());
     std::printf("Monitoring (Ctrl+C to stop)...\n");
 
     const auto t0 = std::chrono::steady_clock::now();

@@ -9,6 +9,7 @@
 
 #include <audioclient.h>
 #include <devicetopology.h>
+#include <endpointvolume.h>
 #include <mmdeviceapi.h>
 #include <mmreg.h>
 #include <propidl.h>
@@ -51,6 +52,8 @@ extern const IID kIID_IAudioRenderClient;
 extern const IID kIID_IDeviceTopology;
 extern const IID kIID_IPart;
 extern const IID kIID_IAcousticEchoCancellationControl;
+extern const IID kIID_IKsJackDescription;
+extern const IID kIID_IAudioEndpointVolume;
 extern const GUID kSubtypePCM;
 extern const GUID kSubtypeIeeeFloat;
 

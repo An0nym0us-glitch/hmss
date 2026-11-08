@@ -328,3 +328,39 @@ TEST(device_bus_classification)
           DeviceBus::Internal);
     CHECK(classifyDeviceBus("", "Something", "", FormFactor::Speakers, &hf) == DeviceBus::Unknown);
 }
+
+TEST(nahimic_and_jack_detection)
+{
+    bool hf = true;
+    // Nahimic creates virtual "mirroring" endpoints that play on no physical speaker.
+    CHECK(classifyDeviceBus("{2}.\\\\?\\swd#mmdevapi#nahimic", "Speakers (Nahimic mirroring Wave Speaker)", "",
+                            FormFactor::Speakers, &hf) == DeviceBus::Virtual);
+    CHECK(!hf);
+    DeviceInfo nah;
+    nah.friendlyName = "Speakers (Nahimic mirroring Wave Speaker)";
+    nah.flow = DeviceFlow::Render;
+    nah.bus = DeviceBus::Virtual;
+    CHECK(isEnhancementVirtualDevice(nah));
+    CHECK(deviceCategory(nah).find("Nahimic") != std::string::npos);
+
+    // Realtek "Speakers" endpoint shared by the internal speakers and the 3.5 mm jack.
+    DeviceInfo spk;
+    spk.friendlyName = "Speakers (Realtek(R) Audio)";
+    spk.flow = DeviceFlow::Render;
+    spk.bus = DeviceBus::Internal;
+    spk.formFactor = FormFactor::Speakers;
+    JackInfo internal;
+    internal.integrated = true;
+    internal.connected = true;
+    JackInfo jack;
+    jack.connector = "3.5 mm";
+    jack.location = "left side";
+    spk.jacks = {internal, jack};
+    CHECK(!isEnhancementVirtualDevice(spk));
+    CHECK(deviceCategory(spk) == "Laptop speakers (jack empty)");
+    CHECK(jackSummary(spk) == "3.5 mm jack (left side): empty");
+    spk.jacks[1].connected = true; // AUX cable plugged in
+    CHECK(hasPluggedJack(spk));
+    CHECK(deviceCategory(spk) == "AUX / headphone jack (plugged in)");
+    CHECK(jackSummary(spk) == "3.5 mm jack (left side): plugged in");
+}

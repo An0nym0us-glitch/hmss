@@ -45,6 +45,13 @@ QLabel* statusPill();
 void setStatusPill(QLabel* pill, const StatusInfo& s);
 
 Theme::Icon iconFor(const ab::DeviceInfo& d);
+// Warning row shown when Windows itself mutes the device or has it at ~0 % volume,
+// with a button that opens the Windows sound settings.
+QWidget* windowsVolumeWarning(QLabel** text);
+// Returns the warning text for a device, or an empty string if everything is fine.
+QString windowsVolumeProblem(const ab::DeviceInfo& d);
+QString virtualDeviceWarning(const ab::DeviceInfo& d);
+int routeCount(const ab::EngineSnapshot& s, const std::string& id);
 QString formatLine(const ab::DeviceView& v);
 
 } // namespace ui

@@ -41,6 +41,9 @@ gap), underrun/resync counters.
 | - | Device busy / open failure → automatic retry | `engine_open_failure_retry` | pass (simulated) |
 | - | Stop/start, configuration round trip | `engine_stop_start_and_config_roundtrip` | pass (simulated) |
 | - | Feedback guard trips on sustained howling, can be re-armed | `engine_feedback_guard` | pass (simulated) |
+| - | Test chime plays on exactly one output, even unrouted / fader down | `engine_test_tone_identifies_output` | pass (simulated) |
+| - | "Bypass audio effects" reaches the stream and re-opens it | `engine_bypass_effects_reopens_stream` | pass (simulated) |
+| - | Nahimic virtual devices and jack-based AUX detection | `nahimic_and_jack_detection` | pass (unit) |
 | - | Real threads: 4000+ routing/parameter changes while streaming | `threaded_stress_routing_changes` | pass; clean under ThreadSanitizer and AddressSanitizer/UBSan |
 
 DSP unit tests: resampler (8/16/44.1/48/96 kHz conversions, SNR > 60 dB, ±500 ppm variable
@@ -72,7 +75,12 @@ quality or behaviour with real drivers.
 Hardware: Lenovo LOQ 15IRX9, OnePlus Nord Buds 2r, Bluetooth speaker on the AUX jack.
 
 1. `AudioBridgeCLI.exe --list`: every device shows its real name (earbuds appear as
-   "Headset Microphone (…)" / "Headphones (…)"), Bluetooth/USB/built-in correctly detected.
+   "Headset Microphone (…)" / "Headphones (…)"), Bluetooth/USB/built-in correctly detected,
+   the Realtek output shows "3.5 mm jack: plugged in" while the AUX cable is connected, and
+   Nahimic devices are marked as virtual.
+1a. Outputs page → **Test** on each output: the chime is heard only on that output.
+1b. Turn on "Bypass Windows audio effects" for the Realtek output: the card reports whether
+   the driver accepted raw mode, and audio still plays.
 2. Earbuds mic → laptop AUX (speaker connected by cable): enable both, route, start.
    Speak; level meters move; sound on the speaker; latency figure on the Outputs page.
 3. Leave it running 30+ minutes: underruns stay at 0 (or stop increasing after the first

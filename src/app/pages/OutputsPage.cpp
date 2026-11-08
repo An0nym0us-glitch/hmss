@@ -40,6 +40,9 @@ OutputCard::OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* 
     chips_->setObjectName("muted");
     chips_->setWordWrap(true);
     titles->addWidget(chips_);
+    jack_ = new QLabel;
+    jack_->setToolTip(tr("Physical connector state reported by the audio driver"));
+    titles->addWidget(jack_);
     head->addLayout(titles, 1);
     pill_ = ui::statusPill();
     head->addWidget(pill_, 0, Qt::AlignTop);
@@ -64,6 +67,13 @@ OutputCard::OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* 
     connect(fbButton, &QPushButton::clicked, this, [this] { ctl_->clearFeedbackTrip(id_); });
     root->addWidget(feedback_);
 
+    virtualWarn_ = new QLabel;
+    virtualWarn_->setObjectName("banner");
+    virtualWarn_->setWordWrap(true);
+    root->addWidget(virtualWarn_);
+    winWarn_ = ui::windowsVolumeWarning(&winWarnText_);
+    root->addWidget(winWarn_);
+
     controls_ = new QWidget;
     auto* grid = new QGridLayout(controls_);
     grid->setContentsMargins(0, 4, 0, 0);
@@ -85,7 +95,15 @@ OutputCard::OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* 
     mute_->setObjectName("mute");
     mute_->setCheckable(true);
     mute_->setToolTip(tr("Mute this output"));
-    grid->addWidget(mute_, 1, 3);
+    test_ = new QPushButton(Theme::icon(Theme::Icon::Play, Theme::text(), 14), tr("Test"));
+    test_->setObjectName("small");
+    test_->setToolTip(tr("Plays a short chime on this output only, so you can hear which physical speaker it is. "
+                         "Starts monitoring if needed."));
+    auto* mt = new QHBoxLayout;
+    mt->setSpacing(6);
+    mt->addWidget(mute_);
+    mt->addWidget(test_);
+    grid->addLayout(mt, 1, 3);
     delay_ = new QSpinBox;
     delay_->setRange(0, 500);
     delay_->setSuffix(tr(" ms"));
@@ -99,6 +117,19 @@ OutputCard::OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* 
     stats_ = new QLabel;
     stats_->setObjectName("dim");
     grid->addWidget(stats_, 2, 0, 1, 6);
+    auto* bp = new QHBoxLayout;
+    bp->setSpacing(10);
+    bypass_ = new ToggleSwitch;
+    bp->addWidget(bypass_);
+    auto* bpl = new QLabel(tr("Bypass Windows audio effects (Nahimic, Dolby, …)"));
+    bpl->setToolTip(tr("Opens the device in Windows RAW mode, so effects such as Nahimic are not applied to "
+                       "AudioBridge's audio. Only works if the driver supports it; the result is shown here."));
+    bp->addWidget(bpl);
+    bypassNote_ = new QLabel;
+    bypassNote_->setObjectName("dim");
+    bypassNote_->setWordWrap(true);
+    bp->addWidget(bypassNote_, 1);
+    grid->addLayout(bp, 3, 0, 1, 6);
     root->addWidget(controls_);
 
     message_ = new QLabel;
@@ -112,12 +143,16 @@ OutputCard::OutputCard(EngineController* ctl, const ab::OutputView& v, QWidget* 
         edit([v](ab::OutputConfig& c) { c.volume = Theme::faderToGain(v); });
     });
     connect(mute_, &QPushButton::toggled, this, [this](bool on) { edit([on](ab::OutputConfig& c) { c.mute = on; }); });
+    connect(test_, &QPushButton::clicked, this, [this] { ctl_->playTestTone(id_); });
+    connect(bypass_, &QAbstractButton::toggled, this,
+            [this](bool on) { edit([on](ab::OutputConfig& c) { c.bypassEffects = on; }); });
     connect(delay_, qOverload<int>(&QSpinBox::valueChanged), this,
             [this](int ms) { edit([ms](ab::OutputConfig& c) { c.delayMs = static_cast<float>(ms); }); });
 }
 
-void OutputCard::update(const ab::OutputView& v, bool monitoring)
+void OutputCard::update(const ab::OutputView& v, const ab::EngineSnapshot& s)
 {
+    const bool monitoring = s.monitoring;
     const ab::OutputConfig& c = v.config;
     slot_ = v.slot;
     running_ = v.runState == ab::RunState::Running;
@@ -154,10 +189,27 @@ void OutputCard::update(const ab::OutputView& v, bool monitoring)
         delay_->blockSignals(b);
     }
     meter_->setActive(running_);
+
+    const QString jack = QString::fromStdString(ab::jackSummary(v.info));
+    jack_->setText(jack);
+    jack_->setVisible(!jack.isEmpty());
+    jack_->setStyleSheet(ab::hasPluggedJack(v.info) ? QStringLiteral("color: #2ecc71; font-weight: 600;")
+                                                    : QStringLiteral("color: #95a0b2;"));
+    const QString virt = ui::virtualDeviceWarning(v.info);
+    virtualWarn_->setText(virt);
+    virtualWarn_->setVisible(!virt.isEmpty());
+    const QString vol = ui::windowsVolumeProblem(v.info);
+    winWarnText_->setText(vol);
+    winWarn_->setVisible(!vol.isEmpty() && c.enabled);
+    bypass_->setCheckedSilently(c.bypassEffects);
+    bypassNote_->setText(v.streamOpen && !v.notes.empty() ? QString::fromStdString(v.notes) : QString());
+
     QString msg = QString::fromStdString(v.message);
     if (!v.present && c.enabled)
         msg = tr("This output is disconnected. Its routes are kept and it reconnects automatically when the same "
                  "device comes back. AudioBridge never switches your audio to a different device on its own.");
+    else if (c.enabled && msg.isEmpty() && ui::routeCount(s, v.info.id) == 0)
+        msg = tr("No microphone is connected to this output yet, so it stays silent. Connect one in the Routing Matrix.");
     message_->setText(msg);
     message_->setVisible(!msg.isEmpty());
     if (!running_)
@@ -196,8 +248,9 @@ OutputsPage::OutputsPage(EngineController* ctl, QWidget* parent) : Page(ctl, par
     connect(refresh, &QPushButton::clicked, this, [this] { ctl_->refreshDevices(); });
     v->addWidget(ui::pageHeader(tr("Outputs"),
                                 tr("Every speaker, headphone, AUX, USB, Bluetooth and HDMI output Windows reports. "
-                                   "Different devices run on independent clocks; AudioBridge keeps each one in sync "
-                                   "with its own buffer and clock-drift correction."),
+                                   "The laptop's AUX / headphone port is the output showing “3.5 mm jack: plugged in” "
+                                   "(on Realtek laptops it is usually the “Speakers” device). Press Test on an output "
+                                   "to hear which physical speaker it is."),
                                 refresh));
     v->addWidget(ui::scrollContainer(&list_), 1);
     empty_ = new QLabel(tr("No playback devices found."));
@@ -229,7 +282,7 @@ void OutputsPage::setSnapshot(const ab::EngineSnapshot& s)
         ids_ = ids;
     }
     for (std::size_t i = 0; i < cards_.size(); ++i)
-        cards_[i]->update(*shown[i], s.monitoring);
+        cards_[i]->update(*shown[i], s);
     empty_->setVisible(cards_.empty());
 }
 

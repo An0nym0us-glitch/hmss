@@ -44,6 +44,7 @@ struct InputConfig {
     bool noiseGate = false;
     float gateThresholdDb = -50.0f;
     bool voiceProcessing = false; // Windows communications-mode processing (incl. AEC when available)
+    bool bypassEffects = false;   // open in RAW mode: skip Windows audio effects (Nahimic, ...)
 };
 
 struct OutputConfig {
@@ -53,6 +54,7 @@ struct OutputConfig {
     float volume = 1.0f;
     bool mute = false;
     float delayMs = 0.0f;
+    bool bypassEffects = false;   // open in RAW mode: skip Windows audio effects (Nahimic, ...)
 };
 
 struct EngineSettings {
@@ -150,6 +152,9 @@ public:
     AudioRoutingMatrix::FeedbackRisk feedbackRisk(const std::string& inputId, const std::string& outputId) const;
 
     void clearFeedbackTrip(const std::string& outputId);
+    // Plays a short identification chime on one output. Returns false if that output
+    // is not currently streaming.
+    bool playTestTone(const std::string& outputId);
 
     EngineConfig config() const;
     void loadConfig(const EngineConfig& cfg);

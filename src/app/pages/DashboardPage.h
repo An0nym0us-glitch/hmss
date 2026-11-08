@@ -25,6 +25,7 @@ private:
     QPushButton* pause_;
     QLabel* state_;
     QLabel* banner_;
+    QLabel* hint_;
     QLabel* inputsValue_;
     QLabel* inputsSub_;
     QLabel* outputsValue_;

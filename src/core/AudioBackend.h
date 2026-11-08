@@ -20,6 +20,8 @@ struct StreamOptions {
     bool voiceProcessing = false;    // capture: open in Communications mode so Windows applies
                                      // its voice processing (AEC / NS / AGC) if the endpoint has it
     std::string echoReferenceId;     // capture + voiceProcessing: render endpoint used as AEC reference
+    bool rawMode = false;            // bypass Windows audio effects/APOs (Nahimic, Dolby, ...) if the
+                                     // driver supports RAW mode; ignored together with voiceProcessing
 };
 
 class IAudioStream {

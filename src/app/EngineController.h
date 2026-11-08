@@ -48,6 +48,8 @@ public:
     void setMasterVolume(float v);
     void setGlobalMute(bool m);
     void clearFeedbackTrip(const std::string& outputId);
+    // Starts monitoring if needed, then plays the identification chime on one output.
+    void playTestTone(const std::string& outputId);
 
 signals:
     void snapshotChanged(SnapshotPtr snapshot);

@@ -43,6 +43,9 @@ struct SimDeviceSpec {
     float toneAmplitude = 0.25f;
     float noiseAmplitude = 0.0f;
     bool burstyDelivery = false; // deliver 2-3 periods at once at irregular intervals (Bluetooth-like)
+    std::vector<JackInfo> jacks;
+    float windowsVolume = 1.0f;
+    bool windowsMuted = false;
 };
 
 class SimulatedBackend : public IAudioBackend {
@@ -76,6 +79,8 @@ public:
     void setRecording(const std::string& id, bool on);
     std::uint64_t renderedFrames(const std::string& id) const;
     int openStreamCount() const;
+    // Options used for the most recent successful open of a device.
+    StreamOptions lastOptions(const std::string& id) const;
 
     struct Device;
     class Stream;

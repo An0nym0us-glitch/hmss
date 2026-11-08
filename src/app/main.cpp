@@ -44,6 +44,17 @@ std::unique_ptr<ab::IAudioBackend> createBackend(QString* note)
         s.noiseAmplitude = 0.01f;
         s.containerId = container;
         s.burstyDelivery = bus == ab::DeviceBus::Bluetooth;
+        if (std::string(id) == "sim.out.aux") {
+            // Like a Realtek laptop codec: built-in speakers + 3.5 mm combo jack (cable plugged in).
+            ab::JackInfo internal;
+            internal.integrated = true;
+            internal.connected = true;
+            ab::JackInfo jack;
+            jack.connector = "3.5 mm";
+            jack.location = "left side";
+            jack.connected = true;
+            s.jacks = {internal, jack};
+        }
         sim->addDevice(s);
     };
     using F = ab::DeviceFlow;
@@ -56,6 +67,8 @@ std::unique_ptr<ab::IAudioBackend> createBackend(QString* note)
     dev("sim.out.bt", "Headphones (SIMULATED Bluetooth Earbuds Stereo)", F::Render, B::Bluetooth, FF::Headphones, 44100, 2, 0, "{BT}");
     dev("sim.out.usb", "Speakers (SIMULATED USB Audio Device)", F::Render, B::USB, FF::Speakers, 48000, 2, 0, "{USB2}");
     dev("sim.out.hdmi", "SIMULATED HDMI Display Audio", F::Render, B::Display, FF::DigitalAudioDisplayDevice, 48000, 2, 0, "{MON}");
+    dev("sim.out.nahimic", "Speakers (Nahimic mirroring Wave Speaker) SIMULATED", F::Render, B::Virtual, FF::Speakers, 48000, 2, 0, "{NAH}");
+    dev("sim.mic.nahimic", "Microphone (Nahimic mirroring Wave Microphone) SIMULATED", F::Capture, B::Virtual, FF::Microphone, 48000, 2, 0, "{NAH}");
     return sim;
 #else
     *note = QObject::tr("This platform has no audio backend.");
